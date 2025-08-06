@@ -1,90 +1,135 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <title>Live Traffic Map</title>
-  <meta name="viewport" content="initial-scale=1.0, width=device-width">
-  <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-      padding: 0;
-    }
-    #map {
-      height: 100%;
-      width: 100%;
-    }
-  </style>
-</head>
-<body>
-  <div id="map"></div>
-
-  <script>
-    function parseQueryParams() {
-      const params = new URLSearchParams(window.location.search);
-      const data = {};
-      for (const [key, value] of params.entries()) {
-        try {
-          data[key] = JSON.parse(decodeURIComponent(value));
-        } catch {
-          data[key] = value;
-        }
+  <head>
+    <title>Traffic Map</title>
+    <meta name="viewport" content="initial-scale=1.0" />
+    <meta charset="utf-8" />
+    <style>
+      #map {
+        height: 100vh;
+        width: 100%;
       }
-      return data;
-    }
+      #modeToggle {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: white;
+        padding: 10px;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        z-index: 5;
+        font-family: sans-serif;
+      }
+    </style>
+    <script>
+      let map;
+      let directionsService;
+      let directionsRenderer;
+      let travelMode = 'WALKING';
 
-    function initMap() {
-      const query = parseQueryParams();
+      function parseQueryParams() {
+        const params = new URLSearchParams(window.location.search);
+        const parseList = (str) => JSON.parse(decodeURIComponent(str));
+        return {
+          currentCoords: parseList(params.get("currentCoords")), // [lat, lng]
+          startAndEndLocation: parseList(params.get("startAndEndLocation")), // [startLat, startLng, endLat, endLng]
+          redArea: parseList(params.get("redArea")) // list of strings like ["[lat,lng]", ...]
+        };
+      }
 
-      const map = new google.maps.Map(document.getElementById("map"), {
-        zoom: 15,
-        center: query.currentCoords || { lat: 0, lng: 0 },
-        mapTypeId: "roadmap"
-      });
+      function initMap() {
+        const { currentCoords, startAndEndLocation, redArea } = parseQueryParams();
 
-      // Add Traffic Layer
-      const trafficLayer = new google.maps.TrafficLayer();
-      trafficLayer.setMap(map);
+        map = new google.maps.Map(document.getElementById("map"), {
+          zoom: 16,
+          center: { lat: currentCoords[0], lng: currentCoords[1] },
+          mapTypeId: "roadmap"
+        });
 
-      // Draw Circles from redArea
-      if (Array.isArray(query.redArea)) {
-        query.redArea.forEach(([lat, lng]) => {
+        directionsService = new google.maps.DirectionsService();
+        directionsRenderer = new google.maps.DirectionsRenderer({ map: map });
+
+        // Show blue marker for current location
+        new google.maps.Marker({
+          position: { lat: currentCoords[0], lng: currentCoords[1] },
+          map: map,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 8,
+            fillColor: '#4285F4',
+            fillOpacity: 1,
+            strokeWeight: 2,
+            strokeColor: 'white'
+          }
+        });
+
+        // Draw red danger circles
+        redArea.forEach((coordStr) => {
+          const [lat, lng] = JSON.parse(coordStr);
           new google.maps.Circle({
             strokeColor: "#FF0000",
             strokeOpacity: 0.8,
             strokeWeight: 2,
-            fillColor: "#FF0000",
+            fillColor: "#FF8888",
             fillOpacity: 0.35,
             map,
             center: { lat, lng },
-            radius: 20 // meters
+            radius: 20, // meters
           });
         });
-      }
 
-      // Add Directions if origin and destination are provided
-      if (query.currentCoords && query.destinationCoords) {
-        const directionsService = new google.maps.DirectionsService();
-        const directionsRenderer = new google.maps.DirectionsRenderer({ map });
+        calculateAndDisplayRoute(startAndEndLocation);
 
-        directionsService.route({
-          origin: query.currentCoords,
-          destination: query.destinationCoords,
-          travelMode: google.maps.TravelMode.DRIVING
-        }, (response, status) => {
-          if (status === "OK") {
-            directionsRenderer.setDirections(response);
-          } else {
-            alert("Directions request failed: " + status);
-          }
+        // Travel mode toggle
+        document.getElementById("travelMode").addEventListener("change", function () {
+          travelMode = this.value;
+          calculateAndDisplayRoute(startAndEndLocation);
         });
       }
-    }
-  </script>
 
-  <!-- Load Google Maps with your API key -->
-  <script async
-    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBN3F8_sdEGAIkhBVDx5ImQLm4SDW5SSlU&callback=initMap">
-  </script>
-</body>
+      function calculateAndDisplayRoute(startAndEndLocation) {
+        const [startLat, startLng, endLat, endLng] = startAndEndLocation;
+
+        directionsService.route(
+          {
+            origin: { lat: startLat, lng: startLng },
+            destination: { lat: endLat, lng: endLng },
+            travelMode: travelMode
+          },
+          (response, status) => {
+            if (status === "OK") {
+              directionsRenderer.setDirections(response);
+
+              const leg = response.routes[0].legs[0];
+              const duration = leg.duration.text;
+              const distance = leg.distance.text;
+
+              // Send distance and time back to App Inventor
+              if (window.AppInventor) {
+                const result = JSON.stringify({ distance, duration });
+                window.AppInventor.setWebViewString(result);
+              }
+            } else {
+              alert("Directions request failed due to " + status);
+            }
+          }
+        );
+      }
+    </script>
+  </head>
+  <body>
+    <div id="modeToggle">
+      <label for="travelMode">Travel Mode:</label>
+      <select id="travelMode">
+        <option value="WALKING" selected>Walking</option>
+        <option value="BICYCLING">Bicycling</option>
+        <option value="DRIVING">Driving</option>
+      </select>
+    </div>
+    <div id="map"></div>
+
+    <script async
+      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBN3F8_sdEGAIkhBVDx5ImQLm4SDW5SSlU&callback=initMap">
+    </script>
+  </body>
 </html>
-

@@ -10,155 +10,154 @@
         margin: 0;
         padding: 0;
       }
-      /* Travel-mode dropdown styling */
+      /* Travel-mode dropdown */
       #modeToggle {
-        position: absolute;
-        top: 10px;
-        left: 50%;
+        position: absolute; top: 10px; left: 50%;
         transform: translateX(-50%);
-        background: #ADD8E6;        /* light blue */
-        padding: 12px 16px;         /* bigger padding */
-        border-radius: 8px;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-        z-index: 5;
-        font-family: sans-serif;
-        font-size: 18px;            /* bigger label text */
+        background: #ADD8E6; padding: 12px 16px;
+        border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        font-family: sans-serif; z-index:5;
+      }
+      #modeToggle label {
+        font-size:18px; font-weight:bold; color:#0000CD;
+        margin-right:8px;
       }
       #modeToggle select {
-        font-size: 18px;            /* bigger dropdown text */
-        padding: 4px;
+        font-size:18px; color:#0000CD; padding:4px;
       }
-
-      /* Info box at bottom */
+      /* Info box */
       #infoBox {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        width: 100%;
-        background: rgba(255,255,255,0.9);
-        padding: 12px;              /* bigger padding */
-        font-family: sans-serif;
-        font-size: 20px;            /* bigger info text */
-        box-shadow: 0 -2px 4px rgba(0,0,0,0.2);
-        text-align: center;
-        z-index: 5;
+        position:absolute; bottom:60px; left:0; width:100%;
+        background:rgba(255,255,255,0.9); padding:12px;
+        font-family:sans-serif; font-size:20px; text-align:center;
+        box-shadow:0 -2px 4px rgba(0,0,0,0.2); z-index:5;
       }
-      #infoBox .distance {
-        color: #FF8C00;             /* medium orange */
-        font-weight: bold;
+      #infoBox .distance { color:#FF8C00; font-weight:bold }
+      #infoBox .duration { color:#008000; font-weight:bold }
+      /* Buttons */
+      .btn {
+        position:absolute; padding:10px 14px; font-size:16px;
+        border:none; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.3);
+        cursor:pointer; z-index:5; background:#FFA07A;
       }
-      #infoBox .duration {
-        color: #008000;             /* medium green */
-        font-weight: bold;
-      }
+      #reportBusy { bottom:10px; right:10px; }
+      #checkPopular { /* if still used */ }
     </style>
     <script>
       let map, directionsService, directionsRenderer;
-      let travelMode = 'WALKING';
+      let currentCoords, startAndEndLocation, redArea, busyAreas;
 
       function parseQueryParams() {
-        const params = new URLSearchParams(window.location.search);
-        const parseList = str => JSON.parse(decodeURIComponent(str || '[]'));
-        return {
-          currentCoords: parseList(params.get('currentCoords')),
-          startAndEndLocation: parseList(params.get('startAndEndLocation')),
-          redAreaRaw: parseList(params.get('redArea'))
-        };
+        const p = new URLSearchParams(window.location.search);
+        const pj = s => JSON.parse(decodeURIComponent(s||'[]'));
+        currentCoords       = pj(p.get('currentCoords'));
+        startAndEndLocation = pj(p.get('startAndEndLocation'));
+        // redArea not shown here for brevity...
+        const rawRed = pj(p.get('redArea'));
+        const rawBusy= pj(p.get('busyAreas'));
+        // parse rawRed & rawBusy:
+        redArea = rawRed.map(s=>{let a=JSON.parse(s);return{lat:a[0],lng:a[1]}}).filter(x=>x);
+        busyAreas = rawBusy.map(a=>({lat:a[0],lng:a[1]}));
       }
 
       function initMap() {
-        const { currentCoords, startAndEndLocation, redAreaRaw } = parseQueryParams();
-
+        parseQueryParams();
         map = new google.maps.Map(document.getElementById('map'), {
-          center: { lat: currentCoords[0], lng: currentCoords[1] },
-          zoom: 16,
-          mapTypeId: 'roadmap'
+          center:{lat:currentCoords[0],lng:currentCoords[1]}, zoom:16
         });
-
-        // Traffic layer (colored roads)
+        // Traffic layer
         new google.maps.TrafficLayer().setMap(map);
+        directionsService  = new google.maps.DirectionsService();
+        directionsRenderer = new google.maps.DirectionsRenderer({map});
 
-        directionsService = new google.maps.DirectionsService();
-        directionsRenderer = new google.maps.DirectionsRenderer({ map });
-
-        // Blue marker for current location
+        // Blue marker = current location
         new google.maps.Marker({
-          position: { lat: currentCoords[0], lng: currentCoords[1] },
-          map,
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 8,
-            fillColor: '#4285F4',
-            fillOpacity: 1,
-            strokeWeight: 2,
-            strokeColor: 'white'
+          position:{lat:currentCoords[0],lng:currentCoords[1]},
+          map, icon:{
+            path:google.maps.SymbolPath.CIRCLE, scale:8,
+            fillColor:'#4285F4', fillOpacity:1,
+            strokeWeight:2, strokeColor:'white'
           }
         });
 
-        // Draw red danger circles (450 m radius)
-        redAreaRaw.forEach(coordStr => {
-          try {
-            const [lat, lng] = JSON.parse(coordStr);
-            new google.maps.Circle({
-              strokeColor: '#FF0000',
-              strokeOpacity: 0.8,
-              strokeWeight: 2,
-              fillColor: '#FF8888',
-              fillOpacity: 0.35,
-              map,
-              center: { lat, lng },
-              radius: 450
-            });
-          } catch (e) {
-            console.error('Invalid circle coord:', coordStr);
-          }
-        });
-
-        // Initial route
-        calculateAndDisplayRoute(startAndEndLocation);
-
-        // Travel-mode toggle handler
-        document.getElementById('travelMode')
-          .addEventListener('change', function() {
-            travelMode = this.value;
-            calculateAndDisplayRoute(startAndEndLocation);
+        // Danger circles
+        redArea.forEach(c=>{
+          new google.maps.Circle({
+            strokeColor:'#FF0000', strokeOpacity:0.8, strokeWeight:2,
+            fillColor:'#FF8888', fillOpacity:0.35,
+            map, center:c, radius:450
           });
+        });
+
+        // Busy-area circles (yellow)
+        busyAreas.forEach(c=>{
+          new google.maps.Circle({
+            strokeColor:'#FFFF00', strokeOpacity:0.8, strokeWeight:2,
+            fillColor:'#FFFF99', fillOpacity:0.35,
+            map, center:c, radius:450
+          });
+        });
+
+        // Draw walking route
+        calculateAndDisplayRoute(startAndEndLocation,'WALKING');
+
+        // Travel-mode toggle
+        document.getElementById('travelMode')
+          .addEventListener('change', e=>
+            calculateAndDisplayRoute(startAndEndLocation,e.target.value)
+          );
+
+        // Report Busy button
+        document.getElementById('reportBusy')
+          .addEventListener('click', ()=>{
+            if(window.AppInventor)
+              window.AppInventor.setWebViewString(
+                JSON.stringify({ reportBusy: true })
+              );
+          });
+
+        // Check proximity every 5s
+        setInterval(()=>{
+          busyAreas.forEach(c=>{
+            const d = google.maps.geometry.spherical.computeDistanceBetween(
+              new google.maps.LatLng(currentCoords[0],currentCoords[1]),
+              new google.maps.LatLng(c.lat,c.lng)
+            );
+            if(d < 50 && window.AppInventor){
+              window.AppInventor.setWebViewString(
+                JSON.stringify({ approachingBusy: true })
+              );
+            }
+          });
+        },5000);
       }
 
-      function calculateAndDisplayRoute([startLat, startLng, endLat, endLng]) {
+      function calculateAndDisplayRoute([sLat,sLng,eLat,eLng], mode) {
         directionsService.route({
-          origin: { lat: startLat, lng: startLng },
-          destination: { lat: endLat, lng: endLng },
-          travelMode: travelMode
-        }, (response, status) => {
-          if (status === 'OK') {
-            directionsRenderer.setDirections(response);
-
-            // extract and display distance + duration
-            const leg = response.routes[0].legs[0];
-            const distText = leg.distance.text;
-            const durText  = leg.duration.text;
-            document.getElementById('infoBox').innerHTML =
-              `<span class="distance">Distance: ${distText}</span>
-               &nbsp;•&nbsp;
-               <span class="duration">Duration: ${durText}</span>`;
-
-            // send back to App Inventor
-            if (window.AppInventor) {
-              window.AppInventor.setWebViewString(JSON.stringify({
-                distance: distText,
-                duration: durText
-              }));
-            }
-          } else {
-            alert('Directions request failed: ' + status);
+          origin:{lat:sLat,lng:sLng},
+          destination:{lat:eLat,lng:eLng},
+          travelMode:mode
+        },(res,st)=>{
+          if(st==='OK'){
+            directionsRenderer.setDirections(res);
+            const leg=res.routes[0].legs[0];
+            document.getElementById('infoBox').innerHTML=
+              `<span class="distance">Distance: ${leg.distance.text}</span>`+
+              ` &nbsp;•&nbsp; `+
+              `<span class="duration">Duration: ${leg.duration.text}</span>`;
+            if(window.AppInventor)
+              window.AppInventor.setWebViewString(
+                JSON.stringify({
+                  distance:leg.distance.text,
+                  duration:leg.duration.text
+                })
+              );
           }
         });
       }
     </script>
   </head>
   <body>
-    <!-- Travel-mode dropdown -->
     <div id="modeToggle">
       <label for="travelMode">Travel Mode:</label>
       <select id="travelMode">
@@ -167,21 +166,14 @@
         <option value="DRIVING">Driving</option>
       </select>
     </div>
-
-    <!-- Map -->
     <div id="map"></div>
-
-    <!-- Distance & duration at bottom -->
     <div id="infoBox">
-      <span class="distance">Distance: --</span>
-      &nbsp;•&nbsp;
+      <span class="distance">Distance: --</span> &nbsp;•&nbsp;
       <span class="duration">Duration: --</span>
     </div>
-
-    <!-- Google Maps JS API -->
+    <button id="reportBusy" class="btn">Report Busy</button>
     <script async
-      src="https://maps.googleapis.com/maps/api/js?key=__MAPS_API_KEY__&callback=initMap">
+      src="https://maps.googleapis.com/maps/api/js?key=__MAPS_API_KEY__&libraries=geometry&callback=initMap">
     </script>
   </body>
 </html>
-

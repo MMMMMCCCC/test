@@ -63,9 +63,8 @@
         parseQueryParams();
         if (window.AppInventor) {
           window.AppInventor.setWebViewString(JSON.stringify({
-            debug: true,
-            redAreaCount: redArea.length,
-            busyAreaCount: busyAreas.length
+            debugBusyRaw: rawBusy,       // the URL‐decoded array
+            debugBusyParsed: busyAreas   // after mapping to {lat,lng} objects
           }));
         }
         map = new google.maps.Map(document.getElementById('map'), {

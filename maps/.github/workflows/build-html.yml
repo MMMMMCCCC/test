@@ -1,26 +1,29 @@
-name: Render traffic.html
+name: Render and Commit traffic.html
 
 on:
   push:
     branches: [ main ]
 
 jobs:
-  render-html:
+  render-and-commit:
     runs-on: ubuntu-latest
     steps:
+      # 1) Checkout *with* credentials so we can push
       - uses: actions/checkout@v3
+        with:
+          persist-credentials: true    # ← allow pushes
 
-      # Read the secret and replace the placeholder
+      # 2) Render the template into the actual HTML
       - name: Render HTML
         run: |
           sed \
             -e "s|\${{ MAPS_API_KEY }}|${{ secrets.MAPS_API_KEY }}|g" \
-            traffic.template.html \
-            > traffic.html
+            maps/traffic.template.html \
+            > maps/traffic.html
 
-      # (Optional) Commit the built file back to the repo or deploy
+      # 3) Commit & push the updated file in its folder
       - name: Commit generated HTML
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
           commit_message: "🔑 inject Maps API key"
-          file_pattern: traffic.html
+          file_pattern: maps/traffic.html   # ← match the correct path

@@ -87,28 +87,34 @@
         });
 
         // Danger circles
-        redArea.forEach(c=>{
+        redArea.forEach(c => {
           new google.maps.Circle({
-            strokeColor:'#FF0000', strokeOpacity:0.8, strokeWeight:2,
-            fillColor:'#FF8888', fillOpacity:0.35,
-            map, center:c, radius:450
+            map: map,
+            center: c,               // use the object directly
+            radius: 200,             // a bit larger for visibility
+            strokeColor: '#FF0000',
+            strokeOpacity: 0.9,
+            strokeWeight: 2,
+            fillColor: '#FF6666',
+            fillOpacity: 0.4,
+            zIndex: 1000             // draw above roads
           });
         });
 
         // Busy-area circles (yellow)
         // Busy‐area circles (yellow)
-        if (Array.isArray(busyAreas) && busyAreas.length > 0) {
+        if (Array.isArray(busyAreas) && busyAreas.length) {
           busyAreas.forEach(c => {
             new google.maps.Circle({
+              map: map,
+              center: c,               // same here
+              radius: 200,
               strokeColor: '#FFD700',
-              strokeOpacity: 0.8,
+              strokeOpacity: 0.9,
               strokeWeight: 2,
-              fillColor:   '#FFFF66',
+              fillColor: '#FFFF66',
               fillOpacity: 0.4,
-              map:         map,
-              center:      { lat: c[0], lng: c[1] },
-              radius:      100,
-              zIndex:      5
+              zIndex: 1001             // draw above red zones
             });
           });
         }

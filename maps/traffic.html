@@ -5,25 +5,20 @@
     <meta name="viewport" content="initial-scale=1.0">
     <meta charset="utf-8">
     <style>
-        #map {
-            height: 100%;
-            width: 100%;
-        }
-
+        #map { height: 100%; width: 100%; }
         #travelModeSelector {
             position: absolute;
             top: 10px;
             left: 50%;
             transform: translateX(-50%);
-            background-color: #ADD8E6; /* Light blue */
+            background-color: #ADD8E6;
             padding: 12px;
             border-radius: 8px;
             z-index: 10;
             font-weight: bold;
             font-size: 18px;
-            color: #1E90FF; /* Medium blue */
+            color: #1E90FF;
         }
-
         #distanceDuration {
             position: absolute;
             bottom: 20px;
@@ -35,24 +30,15 @@
             z-index: 10;
             font-size: 20px;
         }
-
-        .distanceText {
-            color: orange;
-            font-weight: bold;
-        }
-
-        .durationText {
-            color: green;
-            font-weight: bold;
-        }
-
+        .distanceText { color: orange; font-weight: bold; }
+        .durationText { color: green; font-weight: bold; }
         #reportBusyBtn {
             position: absolute;
             bottom: 80px; /* Above distanceDuration */
             right: 20px;
-            padding: 12px 20px;
-            font-size: 16px;
-            background-color: #FFA500; /* Orange */
+            padding: 16px 24px; /* Bigger button */
+            font-size: 18px;
+            background-color: #FFA500;
             color: white;
             border: none;
             border-radius: 8px;
@@ -73,12 +59,12 @@
         </select>
     </div>
 
+    <button id="reportBusyBtn" onclick="reportBusy()">Report Busy</button>
+
     <div id="distanceDuration">
         <span class="distanceText" id="distance"></span> &nbsp;
         <span class="durationText" id="duration"></span>
     </div>
-
-    <button id="reportBusyBtn" onclick="reportBusy()">Report Busy</button>
 
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBN3F8_sdEGAIkhBVDx5ImQLm4SDW5SSlU&libraries=places"></script>
     <script>
@@ -93,8 +79,7 @@
             map = new google.maps.Map(document.getElementById("map"), {
                 zoom: 15,
                 center: currentLocation,
-                mapTypeId: 'roadmap',
-                styles: null
+                mapTypeId: 'roadmap'
             });
 
             directionsService = new google.maps.DirectionsService();
@@ -103,7 +88,6 @@
                 suppressMarkers: true
             });
 
-            // Current Location Marker (Blue)
             new google.maps.Marker({
                 position: currentLocation,
                 map: map,
@@ -164,29 +148,22 @@
             directionsService.route({
                 origin: startLocation,
                 destination: endLocation,
-                travelMode: travelMode,
-                avoidPolygons: redArea.map(strCoord => {
-                    const coord = JSON.parse(strCoord);
-                    return new google.maps.LatLng(coord[0], coord[1]);
-                })
+                travelMode: travelMode
             }, (response, status) => {
                 if (status === 'OK') {
                     directionsRenderer.setDirections(response);
-
                     const leg = response.routes[0].legs[0];
                     document.getElementById("distance").innerText = `Distance: ${leg.distance.text}`;
                     document.getElementById("duration").innerText = `Duration: ${leg.duration.text}`;
-                    
-                    // Send back to App Inventor if needed
-                    const info = {
-                        distance: leg.distance.text,
-                        duration: leg.duration.text
-                    };
+
                     if (window.AppInventor) {
-                        window.AppInventor.setWebViewString(JSON.stringify(info));
+                        window.AppInventor.setWebViewString(JSON.stringify({
+                            distance: leg.distance.text,
+                            duration: leg.duration.text
+                        }));
                     }
                 } else {
-                    console.error('Directions request failed due to ' + status);
+                    console.error('Directions request failed: ' + status);
                 }
             });
         }
@@ -199,16 +176,21 @@
 
         function receiveParams() {
             const urlParams = new URLSearchParams(window.location.search);
-            currentLocation = JSON.parse(urlParams.get('currentCoords'));
-            const startEnd = JSON.parse(urlParams.get('startAndEndLocation'));
-            redArea = JSON.parse(urlParams.get('redArea'));
 
-            startLocation = { lat: startEnd[0], lng: startEnd[1] };
-            endLocation = { lat: startEnd[2], lng: startEnd[3] };
+            try {
+                currentLocation = JSON.parse(urlParams.get('currentCoords')) || currentLocation;
+                const startEnd = JSON.parse(urlParams.get('startAndEndLocation'));
+                if (startEnd && startEnd.length === 4) {
+                    startLocation = { lat: startEnd[0], lng: startEnd[1] };
+                    endLocation = { lat: startEnd[2], lng: startEnd[3] };
+                }
+                const redData = JSON.parse(urlParams.get('redArea'));
+                if (Array.isArray(redData)) redArea = redData;
 
-            // Busy areas from TinyDB (sent from App Inventor)
-            if (urlParams.get('busyAreas')) {
-                busyAreas = JSON.parse(urlParams.get('busyAreas'));
+                const busyData = JSON.parse(urlParams.get('busyAreas'));
+                if (Array.isArray(busyData)) busyAreas = busyData;
+            } catch (e) {
+                console.error("Error parsing URL params", e);
             }
         }
 

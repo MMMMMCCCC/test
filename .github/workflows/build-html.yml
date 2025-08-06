@@ -15,7 +15,7 @@ jobs:
       - name: Render HTML
         run: |
           sed \
-            -e "s|\$${{ MAPS_API_KEY }}|${{ secrets.MAPS_API_KEY }}|g" \
+            -e "s|\${{ '{{ MAPS_API_KEY }}' }}|${{ secrets.MAPS_API_KEY }}|g" \
             maps/traffic.template.html \
             > maps/traffic.html
 
@@ -24,4 +24,3 @@ jobs:
         with:
           commit_message: "🔑 inject Maps API key"
           file_pattern: maps/traffic.html
-

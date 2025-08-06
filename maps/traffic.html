@@ -125,32 +125,30 @@
             );
   
           // Report Busy button
+          // Report Busy button
           document.getElementById('reportBusy')
-            .addEventListener('click', ()=>{
+            .addEventListener('click', () => {
               if (window.AppInventor) {
-                window.AppInventor.setWebViewString(
-                  JSON.stringify({
-                    reportBusy: true,
-                    lat: currentCoords[0],
-                    lng: currentCoords[1]
-                  })
-                );
+                window.AppInventor.setWebViewString(JSON.stringify({
+                  reportBusy: true,
+                  lat: currentCoords[0],
+                  lng: currentCoords[1]
+                }));
               }
-  
+            });  // ← close the click-function and addEventListener
+          
           // Check proximity every 5s
-          setInterval(()=>{
-            busyAreas.forEach(c=>{
+          setInterval(() => {
+            busyAreas.forEach(c => {
               const d = google.maps.geometry.spherical.computeDistanceBetween(
-                new google.maps.LatLng(currentCoords[0],currentCoords[1]),
-                new google.maps.LatLng(c.lat,c.lng)
+                new google.maps.LatLng(currentCoords[0], currentCoords[1]),
+                new google.maps.LatLng(c.lat, c.lng)
               );
-              if(d < 50 && window.AppInventor){
-                window.AppInventor.setWebViewString(
-                  JSON.stringify({ approachingBusy: true })
-                );
+              if (d < 50 && window.AppInventor) {
+                window.AppInventor.setWebViewString(JSON.stringify({ approachingBusy: true }));
               }
             });
-          },5000);
+          }, 5000);
         } catch (e) {
     // Handle any errors initializing the map
           if (window.AppInventor) {

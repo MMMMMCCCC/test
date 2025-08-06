@@ -1,3 +1,4 @@
+<!-- CI bump: rebuild traffic.html on 2025-08-06 -->
 <!DOCTYPE html>
 <html>
   <head>
@@ -9,11 +10,10 @@
         padding: 0;
       }
     </style>
-    <!-- replace YOUR_API_KEY with your Maps JS API key -->
+    <!-- Load Google Maps JS with placeholder; CI will replace this -->
     <script src="https://maps.googleapis.com/maps/api/js?key=${{ MAPS_API_KEY }}"></script>
     <script>
       function initTraffic() {
-        // parse ?lat=…&lng=… from URL if present
         const url = new URL(window.location.href);
         const lat = parseFloat(url.searchParams.get('lat')) || 40.7128;
         const lng = parseFloat(url.searchParams.get('lng')) || -74.0060;
@@ -21,7 +21,6 @@
           center: { lat, lng },
           zoom: 13
         });
-        // turn on the live-traffic overlay
         new google.maps.TrafficLayer().setMap(map);
       }
       window.onload = initTraffic;
@@ -31,3 +30,4 @@
     <div id="map"></div>
   </body>
 </html>
+

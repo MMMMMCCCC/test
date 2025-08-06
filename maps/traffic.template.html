@@ -104,9 +104,15 @@
         // Busy-area circles (yellow)
         if (busyAreas.length) busyAreas.forEach(c =>
           new google.maps.Circle({
-            map, center: c, radius: 600,
-            strokeColor: '#FFD700', fillColor: '#FFFF66',
-            strokeOpacity: 0.8, fillOpacity: 0.2, strokeWeight:2, zIndex:5
+            map: map,
+            center: c,
+            radius: 200,               // bigger radius
+            strokeColor: '#FFD700',    // bright gold border
+            strokeOpacity: 1,          // fully opaque border
+            strokeWeight: 3,           // thicker border
+            fillColor: '#FFFF00',      // pure yellow fill
+            fillOpacity: 0.6,          // more visible
+            zIndex: 1002               // above everything else
           })
         );
 

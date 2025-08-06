@@ -138,14 +138,36 @@
             });  // ← close the click-function and addEventListener
           
           // Check proximity every 5s
+          // Inside your initMap(), replace or add the following setInterval section:
+
           setInterval(() => {
+            // 1) Check Busy Areas
             busyAreas.forEach(c => {
               const d = google.maps.geometry.spherical.computeDistanceBetween(
                 new google.maps.LatLng(currentCoords[0], currentCoords[1]),
                 new google.maps.LatLng(c.lat, c.lng)
               );
               if (d < 50 && window.AppInventor) {
-                window.AppInventor.setWebViewString(JSON.stringify({ approachingBusy: true }));
+                window.AppInventor.setWebViewString(JSON.stringify({
+                  approachingBusy: true,
+                  lat: c.lat,
+                  lng: c.lng
+                }));
+              }
+            });
+          
+            // 2) Check Red (Danger) Zones
+            redArea.forEach(c => {
+              const d = google.maps.geometry.spherical.computeDistanceBetween(
+                new google.maps.LatLng(currentCoords[0], currentCoords[1]),
+                new google.maps.LatLng(c.lat, c.lng)
+              );
+              if (d < 50 && window.AppInventor) {
+                window.AppInventor.setWebViewString(JSON.stringify({
+                  approachingRed: true,
+                  lat: c.lat,
+                  lng: c.lng
+                }));
               }
             });
           }, 5000);

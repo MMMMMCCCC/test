@@ -1,0 +1,26 @@
+name: Render traffic.html
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  render-html:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      # Read the secret and replace the placeholder
+      - name: Render HTML
+        run: |
+          sed \
+            -e "s|\${{ MAPS_API_KEY }}|${{ secrets.MAPS_API_KEY }}|g" \
+            traffic.template.html \
+            > traffic.html
+
+      # (Optional) Commit the built file back to the repo or deploy
+      - name: Commit generated HTML
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "🔑 inject Maps API key"
+          file_pattern: traffic.html

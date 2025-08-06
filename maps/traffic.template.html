@@ -1,92 +1,53 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>Traffic Map</title>
-    <meta name="viewport" content="initial-scale=1.0">
-    <meta charset="utf-8" />
-    <style>
-      html, body {
-        height: 100%;
-        margin: 0;
-        padding: 0;
-      }
-      #map {
-        height: 100%;
-      }
-    </style>
+<head>
+  <title>Live Traffic Map</title>
+  <meta name="viewport" content="initial-scale=1.0, width=device-width">
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    #map {
+      height: 100%;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
 
-    <script>
-      // Get parameters from the URL hash (passed from App Inventor)
-      function getMapParams() {
+  <script>
+    function parseQueryParams() {
+      const params = new URLSearchParams(window.location.search);
+      const data = {};
+      for (const [key, value] of params.entries()) {
         try {
-          const hash = decodeURIComponent(location.hash.substring(1));
-          return JSON.parse(hash);
-        } catch (e) {
-          return {};
+          data[key] = JSON.parse(decodeURIComponent(value));
+        } catch {
+          data[key] = value;
         }
       }
+      return data;
+    }
 
-      let map;
+    function initMap() {
+      const query = parseQueryParams();
 
-      function initMap() {
-        const params = getMapParams();
+      const map = new google.maps.Map(document.getElementById("map"), {
+        zoom: 15,
+        center: query.currentCoords || { lat: 0, lng: 0 },
+        mapTypeId: "roadmap"
+      });
 
-        // Default location if none passed
-        const origin = params.origin ? parseLatLng(params.origin) : { lat: 37.7749, lng: -122.4194 }; // SF
-        const destination = params.destination ? parseLatLng(params.destination) : null;
+      // Add Traffic Layer
+      const trafficLayer = new google.maps.TrafficLayer();
+      trafficLayer.setMap(map);
 
-        map = new google.maps.Map(document.getElementById("map"), {
-          center: origin,
-          zoom: 14,
-          mapTypeId: "roadmap",
-        });
-
-        // Show live traffic
-        const trafficLayer = new google.maps.TrafficLayer();
-        trafficLayer.setMap(map);
-
-        // Origin marker
-        new google.maps.Marker({
-          position: origin,
-          map,
-          label: "A"
-        });
-
-        // Destination marker
-        if (destination) {
-          new google.maps.Marker({
-            position: destination,
-            map,
-            label: "B"
-          });
-
-          // Draw route
-          const directionsService = new google.maps.DirectionsService();
-          const directionsRenderer = new google.maps.DirectionsRenderer();
-          directionsRenderer.setMap(map);
-          directionsService.route(
-            {
-              origin,
-              destination,
-              travelMode: google.maps.TravelMode.DRIVING
-            },
-            (result, status) => {
-              if (status === "OK") {
-                directionsRenderer.setDirections(result);
-              } else {
-                console.error("Directions request failed due to " + status);
-              }
-            }
-          );
-        }
-
-        // OPTIONAL: Draw example circles
-        const dangerZones = [
-          { lat: origin.lat + 0.001, lng: origin.lng + 0.001 },
-          { lat: origin.lat - 0.001, lng: origin.lng - 0.001 }
-        ];
-
-        dangerZones.forEach((center) => {
+      // Draw Circles from redArea
+      if (Array.isArray(query.redArea)) {
+        query.redArea.forEach(([lat, lng]) => {
           new google.maps.Circle({
             strokeColor: "#FF0000",
             strokeOpacity: 0.8,
@@ -94,26 +55,36 @@
             fillColor: "#FF0000",
             fillOpacity: 0.35,
             map,
-            center,
+            center: { lat, lng },
             radius: 20 // meters
           });
         });
       }
 
-      function parseLatLng(str) {
-        const parts = str.split(",");
-        return {
-          lat: parseFloat(parts[0]),
-          lng: parseFloat(parts[1])
-        };
+      // Add Directions if origin and destination are provided
+      if (query.currentCoords && query.destinationCoords) {
+        const directionsService = new google.maps.DirectionsService();
+        const directionsRenderer = new google.maps.DirectionsRenderer({ map });
+
+        directionsService.route({
+          origin: query.currentCoords,
+          destination: query.destinationCoords,
+          travelMode: google.maps.TravelMode.DRIVING
+        }, (response, status) => {
+          if (status === "OK") {
+            directionsRenderer.setDirections(response);
+          } else {
+            alert("Directions request failed: " + status);
+          }
+        });
       }
-    </script>
-  </head>
-  <body>
-    <div id="map"></div>
-    <script async defer
-      src="https://maps.googleapis.com/maps/api/js?key=__MAPS_API_KEY__&callback=initMap">
-    </script>
-  </body>
+    }
+  </script>
+
+  <!-- Load Google Maps with your API key -->
+  <script async
+    src="https://maps.googleapis.com/maps/api/js?key=__MAPS_API_KEY__&callback=initMap">
+  </script>
+</body>
 </html>
 

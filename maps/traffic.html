@@ -91,7 +91,7 @@
           new google.maps.Circle({
             map: map,
             center: c,               // use the object directly
-            radius: 500,             // a bit larger for visibility
+            radius: 600,             // a bit larger for visibility
             strokeColor: '#FF0000',
             strokeOpacity: 0.9,
             strokeWeight: 2,
@@ -104,7 +104,7 @@
         // Busy-area circles (yellow)
         if (busyAreas.length) busyAreas.forEach(c =>
           new google.maps.Circle({
-            map, center: c, radius: 100,
+            map, center: c, radius: 600,
             strokeColor: '#FFD700', fillColor: '#FFFF66',
             strokeOpacity: 0.8, fillOpacity: 0.4, strokeWeight:2, zIndex:5
           })

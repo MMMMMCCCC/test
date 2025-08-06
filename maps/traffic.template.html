@@ -5,10 +5,9 @@
     <meta name="viewport" content="initial-scale=1.0">
     <meta charset="utf-8">
     <style>
-        html, body, #map {
+        #map {
             height: 100%;
-            margin: 0;
-            padding: 0;
+            width: 100%;
         }
 
         #travelModeSelector {
@@ -16,13 +15,13 @@
             top: 10px;
             left: 50%;
             transform: translateX(-50%);
-            background-color: #ADD8E6;
+            background-color: #ADD8E6; /* Light blue */
             padding: 12px;
             border-radius: 8px;
             z-index: 10;
             font-weight: bold;
             font-size: 18px;
-            color: #1E90FF;
+            color: #1E90FF; /* Medium blue */
         }
 
         #distanceDuration {
@@ -37,16 +36,23 @@
             font-size: 20px;
         }
 
-        .distanceText { color: orange; font-weight: bold; }
-        .durationText { color: green; font-weight: bold; }
+        .distanceText {
+            color: orange;
+            font-weight: bold;
+        }
+
+        .durationText {
+            color: green;
+            font-weight: bold;
+        }
 
         #reportBusyBtn {
             position: absolute;
-            bottom: 80px;
+            bottom: 80px; /* Above distanceDuration */
             right: 20px;
             padding: 12px 20px;
             font-size: 16px;
-            background-color: #FFA500;
+            background-color: #FFA500; /* Orange */
             color: white;
             border: none;
             border-radius: 8px;
@@ -84,12 +90,11 @@
         let busyAreas = [];
 
         function initMap() {
-            console.log("Initializing map with currentLocation:", currentLocation);
-
             map = new google.maps.Map(document.getElementById("map"), {
                 zoom: 15,
                 center: currentLocation,
-                mapTypeId: 'roadmap'
+                mapTypeId: 'roadmap',
+                styles: null
             });
 
             directionsService = new google.maps.DirectionsService();
@@ -98,6 +103,7 @@
                 suppressMarkers: true
             });
 
+            // Current Location Marker (Blue)
             new google.maps.Marker({
                 position: currentLocation,
                 map: map,
@@ -119,42 +125,36 @@
 
         function drawRedZones() {
             redArea.forEach(strCoord => {
-                try {
-                    const coord = JSON.parse(strCoord);
-                    const latlng = { lat: coord[0], lng: coord[1] };
-                    new google.maps.Circle({
-                        strokeColor: '#FF0000',
-                        strokeOpacity: 0.8,
-                        strokeWeight: 2,
-                        fillColor: '#FF6666',
-                        fillOpacity: 0.35,
-                        map: map,
-                        center: latlng,
-                        radius: 50
-                    });
-                } catch (e) {
-                    console.error("Invalid redArea coord:", strCoord, e);
-                }
+                const coord = JSON.parse(strCoord);
+                const latlng = { lat: coord[0], lng: coord[1] };
+                new google.maps.Circle({
+                    strokeColor: '#FF0000',
+                    strokeOpacity: 0.8,
+                    strokeWeight: 2,
+                    fillColor: '#FF6666',
+                    fillOpacity: 0.35,
+                    map: map,
+                    center: latlng,
+                    radius: 50,
+                    zIndex: 4
+                });
             });
         }
 
         function drawBusyAreas() {
             busyAreas.forEach(coord => {
-                try {
-                    const latlng = { lat: coord[0], lng: coord[1] };
-                    new google.maps.Circle({
-                        strokeColor: '#FFD700',
-                        strokeOpacity: 0.8,
-                        strokeWeight: 2,
-                        fillColor: '#FFFF66',
-                        fillOpacity: 0.35,
-                        map: map,
-                        center: latlng,
-                        radius: 50
-                    });
-                } catch (e) {
-                    console.error("Invalid busyArea coord:", coord, e);
-                }
+                const latlng = { lat: coord[0], lng: coord[1] };
+                new google.maps.Circle({
+                    strokeColor: '#FFD700',
+                    strokeOpacity: 0.8,
+                    strokeWeight: 2,
+                    fillColor: '#FFFF66',
+                    fillOpacity: 0.35,
+                    map: map,
+                    center: latlng,
+                    radius: 50,
+                    zIndex: 5
+                });
             });
         }
 
@@ -164,22 +164,29 @@
             directionsService.route({
                 origin: startLocation,
                 destination: endLocation,
-                travelMode: travelMode
+                travelMode: travelMode,
+                avoidPolygons: redArea.map(strCoord => {
+                    const coord = JSON.parse(strCoord);
+                    return new google.maps.LatLng(coord[0], coord[1]);
+                })
             }, (response, status) => {
                 if (status === 'OK') {
                     directionsRenderer.setDirections(response);
+
                     const leg = response.routes[0].legs[0];
                     document.getElementById("distance").innerText = `Distance: ${leg.distance.text}`;
                     document.getElementById("duration").innerText = `Duration: ${leg.duration.text}`;
-
+                    
+                    // Send back to App Inventor if needed
+                    const info = {
+                        distance: leg.distance.text,
+                        duration: leg.duration.text
+                    };
                     if (window.AppInventor) {
-                        window.AppInventor.setWebViewString(JSON.stringify({
-                            distance: leg.distance.text,
-                            duration: leg.duration.text
-                        }));
+                        window.AppInventor.setWebViewString(JSON.stringify(info));
                     }
                 } else {
-                    console.error('Directions request failed: ' + status);
+                    console.error('Directions request failed due to ' + status);
                 }
             });
         }
@@ -192,23 +199,16 @@
 
         function receiveParams() {
             const urlParams = new URLSearchParams(window.location.search);
+            currentLocation = JSON.parse(urlParams.get('currentCoords'));
+            const startEnd = JSON.parse(urlParams.get('startAndEndLocation'));
+            redArea = JSON.parse(urlParams.get('redArea'));
 
-            try {
-                currentLocation = JSON.parse(urlParams.get('currentCoords')) || currentLocation;
-                const startEnd = JSON.parse(urlParams.get('startAndEndLocation'));
-                if (startEnd && startEnd.length === 4) {
-                    startLocation = { lat: startEnd[0], lng: startEnd[1] };
-                    endLocation = { lat: startEnd[2], lng: startEnd[3] };
-                }
-                const redData = JSON.parse(urlParams.get('redArea'));
-                if (Array.isArray(redData)) redArea = redData;
+            startLocation = { lat: startEnd[0], lng: startEnd[1] };
+            endLocation = { lat: startEnd[2], lng: startEnd[3] };
 
-                const busyData = JSON.parse(urlParams.get('busyAreas'));
-                if (Array.isArray(busyData)) busyAreas = busyData;
-
-                console.log("Params received: ", { currentLocation, startLocation, endLocation, redArea, busyAreas });
-            } catch (e) {
-                console.error("Error parsing URL params", e);
+            // Busy areas from TinyDB (sent from App Inventor)
+            if (urlParams.get('busyAreas')) {
+                busyAreas = JSON.parse(urlParams.get('busyAreas'));
             }
         }
 

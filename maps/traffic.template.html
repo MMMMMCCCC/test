@@ -38,9 +38,9 @@
       .btn {
         position:absolute; padding:10px 14px; font-size:16px;
         border:none; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.3);
-        cursor:pointer; z-index:5; background:#FFA07A;
+        cursor:pointer; z-index:5; background:#FFD700;
       }
-      #reportBusy { bottom: 180px; right: 10px; }
+      #reportBusy { bottom: 160px; right: 10px; }
     </style>
     <script>
       let map, directionsService, directionsRenderer;
@@ -89,13 +89,22 @@
         });
 
         // Busy-area circles (yellow)
-        busyAreas.forEach(c=>{
-          new google.maps.Circle({
-            strokeColor:'#FFFF00', strokeOpacity:0.8, strokeWeight:2,
-            fillColor:'#FFFF99', fillOpacity:0.35,
-            map, center:c, radius:450
+        // Busy‐area circles (yellow)
+        if (Array.isArray(busyAreas) && busyAreas.length > 0) {
+          busyAreas.forEach(c => {
+            new google.maps.Circle({
+              strokeColor: '#FFD700',
+              strokeOpacity: 0.8,
+              strokeWeight: 2,
+              fillColor:   '#FFFF66',
+              fillOpacity: 0.4,
+              map:         map,
+              center:      { lat: c[0], lng: c[1] },
+              radius:      100,
+              zIndex:      5
+            });
           });
-        });
+        }
 
         // Draw walking route
         calculateAndDisplayRoute(startAndEndLocation,'WALKING');

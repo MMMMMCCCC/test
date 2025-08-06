@@ -5,54 +5,72 @@
     <meta name="viewport" content="initial-scale=1.0" />
     <meta charset="utf-8" />
     <style>
-      #map {
-        height: 100vh;
-        width: 100%;
+      html, body, #map {
+        height: 100%;
+        margin: 0;
+        padding: 0;
       }
+      /* Travel‐mode dropdown styling */
       #modeToggle {
         position: absolute;
         top: 10px;
-        left: 10px;
-        background: white;
-        padding: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #ADD8E6;            /* light blue */
+        padding: 8px 12px;
         border-radius: 8px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         z-index: 5;
         font-family: sans-serif;
       }
+      /* Info box at bottom */
+      #infoBox {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        background: rgba(255,255,255,0.9);
+        padding: 10px;
+        font-family: sans-serif;
+        box-shadow: 0 -2px 4px rgba(0,0,0,0.2);
+        text-align: center;
+        z-index: 5;
+      }
     </style>
     <script>
-      let map;
-      let directionsService;
-      let directionsRenderer;
+      let map, directionsService, directionsRenderer;
       let travelMode = 'WALKING';
 
       function parseQueryParams() {
         const params = new URLSearchParams(window.location.search);
-        const parseList = (str) => JSON.parse(decodeURIComponent(str));
+        const parseList = str => JSON.parse(decodeURIComponent(str || '[]'));
         return {
-          currentCoords: parseList(params.get("currentCoords")), // [lat, lng]
-          startAndEndLocation: parseList(params.get("startAndEndLocation")), // [startLat, startLng, endLat, endLng]
-          redArea: parseList(params.get("redArea")) // list of strings like ["[lat,lng]", ...]
+          currentCoords: parseList(params.get('currentCoords')),
+          startAndEndLocation: parseList(params.get('startAndEndLocation')),
+          redAreaRaw: parseList(params.get('redArea'))
         };
       }
 
       function initMap() {
-        const { currentCoords, startAndEndLocation, redArea } = parseQueryParams();
+        const { currentCoords, startAndEndLocation, redAreaRaw } = parseQueryParams();
 
-        map = new google.maps.Map(document.getElementById("map"), {
-          zoom: 16,
+        map = new google.maps.Map(document.getElementById('map'), {
           center: { lat: currentCoords[0], lng: currentCoords[1] },
-          mapTypeId: "roadmap"
+          zoom: 16,
+          mapTypeId: 'roadmap'
         });
 
-        directionsService = new google.maps.DirectionsService();
-        directionsRenderer = new google.maps.DirectionsRenderer({ map: map });
+        // Traffic layer (shows colored roads)
+        const trafficLayer = new google.maps.TrafficLayer();
+        trafficLayer.setMap(map);
 
-        // Show blue marker for current location
+        directionsService = new google.maps.DirectionsService();
+        directionsRenderer = new google.maps.DirectionsRenderer({ map });
+
+        // Blue marker for current location
         new google.maps.Marker({
           position: { lat: currentCoords[0], lng: currentCoords[1] },
-          map: map,
+          map,
           icon: {
             path: google.maps.SymbolPath.CIRCLE,
             scale: 8,
@@ -64,60 +82,66 @@
         });
 
         // Draw red danger circles
-        redArea.forEach((coordStr) => {
-          const [lat, lng] = JSON.parse(coordStr);
-          new google.maps.Circle({
-            strokeColor: "#FF0000",
-            strokeOpacity: 0.8,
-            strokeWeight: 2,
-            fillColor: "#FF8888",
-            fillOpacity: 0.35,
-            map,
-            center: { lat, lng },
-            radius: 20, // meters
-          });
+        redAreaRaw.forEach(coordStr => {
+          try {
+            const [lat, lng] = JSON.parse(coordStr);
+            new google.maps.Circle({
+              strokeColor: '#FF0000',
+              strokeOpacity: 0.8,
+              strokeWeight: 2,
+              fillColor: '#FF8888',
+              fillOpacity: 0.35,
+              map,
+              center: { lat, lng },
+              radius: 20
+            });
+          } catch(e) {
+            console.error('Invalid circle coord:', coordStr);
+          }
         });
 
+        // Initial route draw
         calculateAndDisplayRoute(startAndEndLocation);
 
-        // Travel mode toggle
-        document.getElementById("travelMode").addEventListener("change", function () {
+        // Travel-mode toggle handler
+        document.getElementById('travelMode').addEventListener('change', function() {
           travelMode = this.value;
           calculateAndDisplayRoute(startAndEndLocation);
         });
       }
 
-      function calculateAndDisplayRoute(startAndEndLocation) {
-        const [startLat, startLng, endLat, endLng] = startAndEndLocation;
+      function calculateAndDisplayRoute([startLat, startLng, endLat, endLng]) {
+        directionsService.route({
+          origin: { lat: startLat, lng: startLng },
+          destination: { lat: endLat, lng: endLng },
+          travelMode: travelMode
+        }, (response, status) => {
+          if (status === 'OK') {
+            directionsRenderer.setDirections(response);
 
-        directionsService.route(
-          {
-            origin: { lat: startLat, lng: startLng },
-            destination: { lat: endLat, lng: endLng },
-            travelMode: travelMode
-          },
-          (response, status) => {
-            if (status === "OK") {
-              directionsRenderer.setDirections(response);
+            // extract and display distance + duration
+            const leg = response.routes[0].legs[0];
+            const distText = leg.distance.text;
+            const durText  = leg.duration.text;
+            document.getElementById('infoBox').textContent =
+              `Distance: ${distText}   •   Duration: ${durText}`;
 
-              const leg = response.routes[0].legs[0];
-              const duration = leg.duration.text;
-              const distance = leg.distance.text;
-
-              // Send distance and time back to App Inventor
-              if (window.AppInventor) {
-                const result = JSON.stringify({ distance, duration });
-                window.AppInventor.setWebViewString(result);
-              }
-            } else {
-              alert("Directions request failed due to " + status);
+            // send back to App Inventor
+            if (window.AppInventor) {
+              window.AppInventor.setWebViewString(JSON.stringify({
+                distance: distText,
+                duration: durText
+              }));
             }
+          } else {
+            alert('Directions request failed: ' + status);
           }
-        );
+        });
       }
     </script>
   </head>
   <body>
+    <!-- Travel-mode dropdown -->
     <div id="modeToggle">
       <label for="travelMode">Travel Mode:</label>
       <select id="travelMode">
@@ -126,8 +150,14 @@
         <option value="DRIVING">Driving</option>
       </select>
     </div>
+
+    <!-- Map container -->
     <div id="map"></div>
 
+    <!-- Distance & duration info at bottom -->
+    <div id="infoBox">Loading route details…</div>
+
+    <!-- Load Maps JS API -->
     <script async
       src="https://maps.googleapis.com/maps/api/js?key=__MAPS_API_KEY__&callback=initMap">
     </script>

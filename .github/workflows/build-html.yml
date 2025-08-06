@@ -8,12 +8,10 @@ jobs:
   render-and-commit:
     runs-on: ubuntu-latest
     steps:
-      # 1) Checkout *with* credentials so we can push
       - uses: actions/checkout@v3
         with:
-          persist-credentials: true    # ← allow pushes
+          persist-credentials: true
 
-      # 2) Render the template into the actual HTML
       - name: Render HTML
         run: |
           sed \
@@ -21,9 +19,8 @@ jobs:
             maps/traffic.template.html \
             > maps/traffic.html
 
-      # 3) Commit & push the updated file in its folder
       - name: Commit generated HTML
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
           commit_message: "🔑 inject Maps API key"
-          file_pattern: maps/traffic.html   # ← match the correct path
+          file_pattern: maps/traffic.html

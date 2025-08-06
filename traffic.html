@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="initial-scale=1.0,user-scalable=no"/>
+    <style>
+      html, body, #map {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+    </style>
+    <!-- replace YOUR_API_KEY with your Maps JS API key -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=${{ MAPS_API_KEY }}"></script>
+    <script>
+      function initTraffic() {
+        // parse ?lat=…&lng=… from URL if present
+        const url = new URL(window.location.href);
+        const lat = parseFloat(url.searchParams.get('lat')) || 40.7128;
+        const lng = parseFloat(url.searchParams.get('lng')) || -74.0060;
+        const map = new google.maps.Map(document.getElementById('map'), {
+          center: { lat, lng },
+          zoom: 13
+        });
+        // turn on the live-traffic overlay
+        new google.maps.TrafficLayer().setMap(map);
+      }
+      window.onload = initTraffic;
+    </script>
+  </head>
+  <body>
+    <div id="map"></div>
+  </body>
+</html>

@@ -60,93 +60,97 @@
       }
 
       function initMap() {
-        parseQueryParams();
-        if (window.AppInventor) {
-          window.AppInventor.setWebViewString(JSON.stringify({
-            debugBusyRaw: rawBusy,       // the URL‐decoded array
-            debugBusyParsed: busyAreas   // after mapping to {lat,lng} objects
-          }));
-        }
-        map = new google.maps.Map(document.getElementById('map'), {
-          center:{lat:currentCoords[0],lng:currentCoords[1]}, zoom:16
-        });
-        // Traffic layer
-        new google.maps.TrafficLayer().setMap(map);
-        directionsService  = new google.maps.DirectionsService();
-        directionsRenderer = new google.maps.DirectionsRenderer({map});
-
-        // Blue marker = current location
-        new google.maps.Marker({
-          position:{lat:currentCoords[0],lng:currentCoords[1]},
-          map, icon:{
-            path:google.maps.SymbolPath.CIRCLE, scale:8,
-            fillColor:'#4285F4', fillOpacity:1,
-            strokeWeight:2, strokeColor:'white'
-          }
-        });
-
-        // Danger circles
-        redArea.forEach(c => {
-          new google.maps.Circle({
-            map: map,
-            center: c,               // use the object directly
-            radius: 600,             // a bit larger for visibility
-            strokeColor: '#FF0000',
-            strokeOpacity: 0.9,
-            strokeWeight: 2,
-            fillColor: '#FF6666',
-            fillOpacity: 0.4,
-            zIndex: 1000             // draw above roads
+        try {
+          parseQueryParams();
+          map = new google.maps.Map(document.getElementById('map'), {
+            center:{lat:currentCoords[0],lng:currentCoords[1]}, zoom:16
           });
-        });
-
-        // Busy-area circles (yellow)
-        if (busyAreas.length) busyAreas.forEach(c =>
-          new google.maps.Circle({
-            map: map,
-            center: c,
-            radius: 1000,               // bigger radius
-            strokeColor: '#FFD700',    // bright gold border
-            strokeOpacity: 1,          // fully opaque border
-            strokeWeight: 3,           // thicker border
-            fillColor: '#FFFF00',      // pure yellow fill
-            fillOpacity: 0.6,          // more visible
-            zIndex: 1002               // above everything else
-          })
-        );
-
-        // Draw walking route
-        calculateAndDisplayRoute(startAndEndLocation,'WALKING');
-
-        // Travel-mode toggle
-        document.getElementById('travelMode')
-          .addEventListener('change', e=>
-            calculateAndDisplayRoute(startAndEndLocation,e.target.value)
-          );
-
-        // Report Busy button
-        document.getElementById('reportBusy')
-          .addEventListener('click', ()=>{
-            if(window.AppInventor)
-              window.AppInventor.setWebViewString(
-                JSON.stringify({ reportBusy: true })
-              );
-          });
-
-        // Check proximity every 5s
-        setInterval(()=>{
-          busyAreas.forEach(c=>{
-            const d = google.maps.geometry.spherical.computeDistanceBetween(
-              new google.maps.LatLng(currentCoords[0],currentCoords[1]),
-              new google.maps.LatLng(c.lat,c.lng)
-            );
-            if(d < 50 && window.AppInventor){
-              window.AppInventor.setWebViewString(
-                JSON.stringify({ approachingBusy: true })
-              );
+          // Traffic layer
+          new google.maps.TrafficLayer().setMap(map);
+          directionsService  = new google.maps.DirectionsService();
+          directionsRenderer = new google.maps.DirectionsRenderer({map});
+  
+          // Blue marker = current location
+          new google.maps.Marker({
+            position:{lat:currentCoords[0],lng:currentCoords[1]},
+            map, icon:{
+              path:google.maps.SymbolPath.CIRCLE, scale:8,
+              fillColor:'#4285F4', fillOpacity:1,
+              strokeWeight:2, strokeColor:'white'
             }
           });
-        },5000);
+  
+          // Danger circles
+          redArea.forEach(c => {
+            new google.maps.Circle({
+              map: map,
+              center: c,               // use the object directly
+              radius: 600,             // a bit larger for visibility
+              strokeColor: '#FF0000',
+              strokeOpacity: 0.9,
+              strokeWeight: 2,
+              fillColor: '#FF6666',
+              fillOpacity: 0.4,
+              zIndex: 1000             // draw above roads
+            });
+          });
+  
+          // Busy-area circles (yellow)
+          if (busyAreas.length) busyAreas.forEach(c =>
+            new google.maps.Circle({
+              map: map,
+              center: c,
+              radius: 1000,               // bigger radius
+              strokeColor: '#FFD700',    // bright gold border
+              strokeOpacity: 1,          // fully opaque border
+              strokeWeight: 3,           // thicker border
+              fillColor: '#FFFF00',      // pure yellow fill
+              fillOpacity: 0.6,          // more visible
+              zIndex: 1002               // above everything else
+            })
+          );
+  
+          // Draw walking route
+          calculateAndDisplayRoute(startAndEndLocation,'WALKING');
+  
+          // Travel-mode toggle
+          document.getElementById('travelMode')
+            .addEventListener('change', e=>
+              calculateAndDisplayRoute(startAndEndLocation,e.target.value)
+            );
+  
+          // Report Busy button
+          document.getElementById('reportBusy')
+            .addEventListener('click', ()=>{
+              if(window.AppInventor)
+                window.AppInventor.setWebViewString(
+                  JSON.stringify({ reportBusy: true })
+                );
+            });
+  
+          // Check proximity every 5s
+          setInterval(()=>{
+            busyAreas.forEach(c=>{
+              const d = google.maps.geometry.spherical.computeDistanceBetween(
+                new google.maps.LatLng(currentCoords[0],currentCoords[1]),
+                new google.maps.LatLng(c.lat,c.lng)
+              );
+              if(d < 50 && window.AppInventor){
+                window.AppInventor.setWebViewString(
+                  JSON.stringify({ approachingBusy: true })
+                );
+              }
+            });
+          },5000);
+        } catch (e) {
+    // Handle any errors initializing the map
+          if (window.AppInventor) {
+            window.AppInventor.setWebViewString(
+              JSON.stringify({ mapInitError: e.message })
+            );
+          }
+          console.error('initMap error:', e);
+        }
       }
 
       function calculateAndDisplayRoute([sLat,sLng,eLat,eLng], mode) {
@@ -189,7 +193,7 @@
       <span class="distance">Distance: --</span> &nbsp;•&nbsp;
       <span class="duration">Duration: --</span>
     </div>
-    <script async
+    <script async defer
       src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBN3F8_sdEGAIkhBVDx5ImQLm4SDW5SSlU&libraries=geometry&callback=initMap">
     </script>
   </body>

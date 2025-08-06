@@ -56,7 +56,7 @@
         const rawBusy= pj(p.get('busyAreas'));
         // parse rawRed & rawBusy:
         redArea = rawRed.map(s => { const a = JSON.parse(s); return { lat: a[1], lng: a[0] }; }).filter(x => x);
-        busyAreas = rawBusy.map(a => ({ lat: a[1], lng: a[0] }));
+        busyAreas = rawBusy.map(a => ({ lat: a[0], lng: a[1] }));
       }
 
       function initMap() {

@@ -127,11 +127,15 @@
           // Report Busy button
           document.getElementById('reportBusy')
             .addEventListener('click', ()=>{
-              if(window.AppInventor)
+              if (window.AppInventor) {
                 window.AppInventor.setWebViewString(
-                  JSON.stringify({ reportBusy: true })
+                  JSON.stringify({
+                    reportBusy: true,
+                    lat: currentCoords[0],
+                    lng: currentCoords[1]
+                  })
                 );
-            });
+              }
   
           // Check proximity every 5s
           setInterval(()=>{

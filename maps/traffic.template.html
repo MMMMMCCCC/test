@@ -219,7 +219,7 @@
                 origins:      [{ lat: currentCoords[0], lng: currentCoords[1] }],
                 destinations: [{ lat: destLat,        lng: destLng        }],
                 travelMode:   selectedMode,
-                unitSystem:   google.maps.UnitSystem.METRIC
+                unitSystem: google.maps.UnitSystem.IMPERIAL
               }, (response, status) => {
                 if (status === 'OK') {
                   const el = response.rows[0].elements[0];

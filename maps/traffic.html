@@ -47,6 +47,7 @@
       let currentCoords, startAndEndLocation, redArea, busyAreas;
 
       let notifiedDestination = false;
+      let selectedMode = 'WALKING';
 
       function parseQueryParams() {
         const p = new URLSearchParams(window.location.search);
@@ -122,9 +123,10 @@
   
           // Travel-mode toggle
           document.getElementById('travelMode')
-            .addEventListener('change', e=>
-              calculateAndDisplayRoute(startAndEndLocation,e.target.value)
-            );
+            .addEventListener('change', e => {
+              selectedMode = e.target.value;
+              calculateAndDisplayRoute(startAndEndLocation, selectedMode);
+            });
   
           // Report Busy button
           // Report Busy button
@@ -143,6 +145,14 @@
           // Inside your initMap(), replace or add the following setInterval section:
 
           setInterval(() => {
+            // Re-parse currentCoords
+            const p = new URLSearchParams(window.location.search);
+            const cc = JSON.parse(decodeURIComponent(p.get('currentCoords') || '[0,0]'));
+            currentCoords = cc;
+          
+            // Recalculate route using updated location
+            const [, , endLat, endLng] = startAndEndLocation;
+            calculateAndDisplayRoute([currentCoords[0], currentCoords[1], endLat, endLng], selectedMode);
             // 1) Check Busy Areas
             busyAreas.forEach(c => {
               const d = google.maps.geometry.spherical.computeDistanceBetween(

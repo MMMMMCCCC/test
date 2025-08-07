@@ -41,6 +41,32 @@
         cursor:pointer; z-index:5; background:#FFD700;
       }
       #reportBusy { bottom: 135px; right: 10px; }
+      #destinationOverlay {
+        position: absolute;
+        top:   0; left: 0;
+        width: 100%; height: 100%;
+        background: rgba(0,0,0,0.5);
+        display: none;                /* show via JS */
+        align-items: center;          /* vertical centering */
+        justify-content: center;      /* horizontal centering */
+        z-index: 1000;                /* above the map */
+      }
+      #destinationOverlay .modal {
+        background: white;
+        padding: 24px 32px;
+        border-radius: 8px;
+        text-align: center;
+        max-width: 80%;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      }
+      #destinationOverlay .modal h2 {
+        margin-top: 0;
+        font-size: 22px;
+      }
+      #destinationOverlay .modal p {
+        font-size: 16px;
+        margin: 12px 0;
+      }
     </style>
     <script>
       let map, directionsService, directionsRenderer;
@@ -161,7 +187,6 @@
             });
   
           // Report Busy button
-          // Report Busy button
           document.getElementById('reportBusy')
             .addEventListener('click', () => {
               if (window.AppInventor) {
@@ -183,6 +208,11 @@
             // 2) only move the blue marker & update InfoBox *after* the first tick
             if (updateCount > 1) {
               currentMarker.setPosition({
+                lat: currentCoords[0],
+                lng: currentCoords[1]
+              });
+              
+              map.panTo({
                 lat: currentCoords[0],
                 lng: currentCoords[1]
               });

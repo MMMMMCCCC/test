@@ -67,6 +67,15 @@
         try {
           parseQueryParams();
           // inside initMap(), right after parseQueryParams() and destLat/destLng
+          // DEBUG: send your parsed route endpoints back to App Inventor
+          if (window.AppInventor) {
+            window.AppInventor.setWebViewString(JSON.stringify({
+              debugRouteParams: {
+                start: [startLat, startLng],
+                dest:  [destLat, destLng]
+              }
+            }));
+          }
           if (navigator.geolocation) {
             navigator.geolocation.watchPosition(pos => {
               currentCoords = [ pos.coords.latitude, pos.coords.longitude ];

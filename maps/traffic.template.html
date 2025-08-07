@@ -77,6 +77,7 @@
       let updateCount = 0;
       let distanceService;
       let currentMarker;
+      let lastPanLocation = null;
 
       function parseQueryParams() {
         const p = new URLSearchParams(window.location.search);
@@ -208,12 +209,15 @@
           
               // 2) Pan the map (after 7s)
               if (updateCount > 7) {
-                map.panTo({
-                  lat: currentCoords[0],
-                  lng: currentCoords[1]
-                });
+                const newLatLng = new google.maps.LatLng(currentCoords[0], currentCoords[1]);
+              
+                // Only pan if moved more than ~10 meters
+                if (!lastPanLocation || 
+                    google.maps.geometry.spherical.computeDistanceBetween(newLatLng, lastPanLocation) > 10) {
+                  map.panTo(newLatLng);
+                  lastPanLocation = newLatLng;
+                }
               }
-          
               // 3) Distance & duration only
               distanceService.getDistanceMatrix({
                 origins:      [{ lat: currentCoords[0], lng: currentCoords[1] }],

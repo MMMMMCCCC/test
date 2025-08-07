@@ -53,29 +53,22 @@
       let currentMarker;
 
       function parseQueryParams() {
+        const p = new URLSearchParams(window.location.search);     // ← add this back
         const pj = s => JSON.parse(decodeURIComponent(s||'[]'));
+        currentCoords       = pj(p.get('currentCoords'));
         startAndEndLocation = pj(p.get('startAndEndLocation'));
-        // redArea not shown here for brevity...
-        const rawRed = pj(p.get('redArea'));
-        const rawBusy= pj(p.get('busyAreas'));
-        // parse rawRed & rawBusy:
-        redArea = rawRed.map(s => { const a = JSON.parse(s); return { lat: a[1], lng: a[0] }; }).filter(x => x);
-        busyAreas = rawBusy.map(a => ({ lat: a[0], lng: a[1] }));
+        const rawRed  = pj(p.get('redArea'));
+        const rawBusy = pj(p.get('busyAreas'));
+        redArea   = rawRed .map(s=>{const a=JSON.parse(s);return{lat:a[1],lng:a[0]}}).filter(x=>x);
+        busyAreas = rawBusy.map(a=>({lat:a[0],lng:a[1]}));
       }
 
       function initMap() {
         try {
           parseQueryParams();
+          const [startLat, startLng, destLat, destLng] = startAndEndLocation;
           // inside initMap(), right after parseQueryParams() and destLat/destLng
           // DEBUG: send your parsed route endpoints back to App Inventor
-          if (window.AppInventor) {
-            window.AppInventor.setWebViewString(JSON.stringify({
-              debugRouteParams: {
-                start: [startLat, startLng],
-                dest:  [destLat, destLng]
-              }
-            }));
-          }
           if (navigator.geolocation) {
             navigator.geolocation.watchPosition(pos => {
               currentCoords = [ pos.coords.latitude, pos.coords.longitude ];
@@ -87,7 +80,6 @@
               timeout: 5000
             });
           }
-          const [startLat, startLng, destLat, destLng] = startAndEndLocation;
           map = new google.maps.Map(document.getElementById('map'), {
             center:{lat:currentCoords[0],lng:currentCoords[1]}, zoom:16
           });
@@ -173,9 +165,10 @@
           // Inside your initMap(), replace or add the following setInterval section:
 
           setInterval(() => {
+            // 1) bump the tick counter
             updateCount++;
           
-            // only move marker & update info after the first tick
+            // 2) only move the blue marker & update InfoBox *after* the first tick
             if (updateCount > 1) {
               currentMarker.setPosition({
                 lat: currentCoords[0],
@@ -196,9 +189,9 @@
                     `<span class="duration">Duration: ${el.duration.text}</span>`;
                 }
               });
-            }  // ← closes the updateCount > 1 guard
+            }  // ← end of updateCount > 1 guard
           
-            // Check Busy Areas
+            // 3) check all busyAreas every tick
             busyAreas.forEach(c => {
               const d = google.maps.geometry.spherical.computeDistanceBetween(
                 new google.maps.LatLng(currentCoords[0], currentCoords[1]),
@@ -213,7 +206,7 @@
               }
             });
           
-            // Check Red (Danger) Zones
+            // 4) check all redArea every tick
             redArea.forEach(c => {
               const d = google.maps.geometry.spherical.computeDistanceBetween(
                 new google.maps.LatLng(currentCoords[0], currentCoords[1]),
@@ -228,7 +221,7 @@
               }
             });
           
-            // Arrival check (only after 3 updates)
+            // 5) arrival check *only after* 3 ticks
             if (updateCount > 3) {
               const destDistance = google.maps.geometry.spherical.computeDistanceBetween(
                 new google.maps.LatLng(currentCoords[0], currentCoords[1]),

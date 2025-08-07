@@ -53,20 +53,25 @@
       let currentMarker;
 
       function parseQueryParams() {
-        const p = new URLSearchParams(window.location.search);     // ← add this back
-        const pj = s => JSON.parse(decodeURIComponent(s||'[]'));
+        const p = new URLSearchParams(window.location.search);
+        const pj = s => JSON.parse(decodeURIComponent(s || '[]'));
+      
+        // live location passed from App Inventor
         currentCoords       = pj(p.get('currentCoords'));
+        // static start+end passed from App Inventor
         startAndEndLocation = pj(p.get('startAndEndLocation'));
+        // circles
         const rawRed  = pj(p.get('redArea'));
         const rawBusy = pj(p.get('busyAreas'));
-        redArea   = rawRed .map(s=>{const a=JSON.parse(s);return{lat:a[1],lng:a[0]}}).filter(x=>x);
-        busyAreas = rawBusy.map(a=>({lat:a[0],lng:a[1]}));
+      
+        redArea   = rawRed .map(s => { const a = JSON.parse(s); return {lat:a[1],lng:a[0]}; }).filter(x=>x);
+        busyAreas = rawBusy.map(a => ({lat:a[0],lng:a[1]}));
       }
 
       function initMap() {
         try {
           parseQueryParams();
-          const [startLat, startLng, destLat, destLng] = startAndEndLocation;
+          const [ startLat, startLng, destLat, destLng ] = startAndEndLocation;
           if (window.AppInventor) {
             window.AppInventor.setWebViewString(JSON.stringify({
               dbgStart: [startLat, startLng],

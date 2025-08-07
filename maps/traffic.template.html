@@ -49,6 +49,8 @@
       let notifiedDestination = false;
       let selectedMode = 'WALKING';
       let updateCount = 0;
+      let distanceService;
+      let currentMarker;
 
       function parseQueryParams() {
         const p = new URLSearchParams(window.location.search);
@@ -76,14 +78,21 @@
           directionsRenderer = new google.maps.DirectionsRenderer({map});
   
           // Blue marker = current location
-          new google.maps.Marker({
-            position:{lat:currentCoords[0],lng:currentCoords[1]},
-            map, icon:{
-              path:google.maps.SymbolPath.CIRCLE, scale:8,
-              fillColor:'#4285F4', fillOpacity:1,
-              strokeWeight:2, strokeColor:'white'
+          currentMarker = new google.maps.Marker({
+            position: { lat: currentCoords[0], lng: currentCoords[1] },
+            map: map,
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 8,
+              fillColor: '#4285F4',
+              fillOpacity: 1,
+              strokeWeight: 2,
+              strokeColor: 'white'
             }
           });
+          
+          // Set up DistanceMatrixService
+          distanceService = new google.maps.DistanceMatrixService();
   
           // Danger circles
           redArea.forEach(c => {
@@ -143,17 +152,32 @@
 
           setInterval(() => {
             updateCount++;
-            // Re-parse currentCoords
-            const p = new URLSearchParams(window.location.search);
-            const cc = JSON.parse(decodeURIComponent(p.get('currentCoords') || '[0,0]'));
-            currentCoords = cc;
           
-            // Recalculate route using updated location
-            const [, , endLat, endLng] = startAndEndLocation;
-            calculateAndDisplayRoute(
-              [ currentCoords[0], currentCoords[1], destLat, destLng ],
-              selectedMode
-            );
+            // 1) Refresh currentCoords
+            const p = new URLSearchParams(window.location.search);
+            currentCoords = JSON.parse(decodeURIComponent(p.get('currentCoords') || '[0,0]'));
+          
+            // 2) Move the blue marker
+            currentMarker.setPosition({
+              lat: currentCoords[0],
+              lng: currentCoords[1]
+            });
+          
+            // 3) Re-compute distance & duration
+            distanceService.getDistanceMatrix({
+              origins:      [{ lat: currentCoords[0], lng: currentCoords[1] }],
+              destinations: [{ lat: destLat,       lng: destLng }],
+              travelMode:   selectedMode,
+              unitSystem:   google.maps.UnitSystem.METRIC
+            }, (response, status) => {
+              if (status === 'OK') {
+                const el = response.rows[0].elements[0];
+                document.getElementById('infoBox').innerHTML =
+                  `<span class="distance">Distance: ${el.distance.text}</span>` +
+                  ` &nbsp;•&nbsp; ` +
+                  `<span class="duration">Duration: ${el.duration.text}</span>`;
+              }
+            });
             // 1) Check Busy Areas
             busyAreas.forEach(c => {
               const d = google.maps.geometry.spherical.computeDistanceBetween(
@@ -212,7 +236,7 @@
                 }));
               }
             }
-          }, 5000);
+          }, 2000);
         } catch (e) {
     // Handle any errors initializing the map
           if (window.AppInventor) {
@@ -247,6 +271,9 @@
           }
         });
       }
+      function hideDestinationOverlay() {
+        document.getElementById('destinationOverlay').style.display = 'none';
+      }
     </script>
   </head>
   <body>
@@ -263,6 +290,12 @@
     <div id="infoBox">
       <span class="distance">Distance: --</span> &nbsp;•&nbsp;
       <span class="duration">Duration: --</span>
+    </div>
+    <div id="destinationOverlay">
+      <div class="modal">
+        <h2>You’ve reached your destination!</h2>
+        <p>Tap “End Navigation” in the app to close.</p>
+      </div>
     </div>
     <script async defer
       src="https://maps.googleapis.com/maps/api/js?key=__MAPS_API_KEY__&libraries=geometry&callback=initMap">

@@ -48,6 +48,7 @@
 
       let notifiedDestination = false;
       let selectedMode = 'WALKING';
+      let updateCount = 0;
 
       function parseQueryParams() {
         const p = new URLSearchParams(window.location.search);
@@ -141,6 +142,7 @@
           // Inside your initMap(), replace or add the following setInterval section:
 
           setInterval(() => {
+            updateCount++;
             // Re-parse currentCoords
             const p = new URLSearchParams(window.location.search);
             const cc = JSON.parse(decodeURIComponent(p.get('currentCoords') || '[0,0]'));
@@ -193,6 +195,20 @@
               }));
             }
           
+            if (updateCount > 1) {
+              const destLat = startAndEndLocation[2];
+              const destLng = startAndEndLocation[3];
+              const destDistance = google.maps.geometry.spherical.computeDistanceBetween(
+                new google.maps.LatLng(currentCoords[0], currentCoords[1]),
+                new google.maps.LatLng(destLat, destLng)
+              );
+              if (!notifiedDestination && destDistance < 30 && window.AppInventor) {
+                notifiedDestination = true;
+                window.AppInventor.setWebViewString(JSON.stringify({
+                  reachedDestination: true
+                }));
+              }
+            }
           }, 5000);
         } catch (e) {
     // Handle any errors initializing the map

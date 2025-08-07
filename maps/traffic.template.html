@@ -155,16 +155,14 @@
 
           setInterval(() => {
             updateCount++;
-
-            // only start updating after the first tick
+          
+            // only move marker & update info after the first tick
             if (updateCount > 1) {
-              // move the blue marker
               currentMarker.setPosition({
                 lat: currentCoords[0],
                 lng: currentCoords[1]
               });
-            
-              // re-compute distance & duration
+          
               distanceService.getDistanceMatrix({
                 origins:      [{ lat: currentCoords[0], lng: currentCoords[1] }],
                 destinations: [{ lat: destLat,       lng: destLng }],
@@ -179,7 +177,9 @@
                     `<span class="duration">Duration: ${el.duration.text}</span>`;
                 }
               });
-            // 1) Check Busy Areas
+            }  // ← closes the updateCount > 1 guard
+          
+            // Check Busy Areas
             busyAreas.forEach(c => {
               const d = google.maps.geometry.spherical.computeDistanceBetween(
                 new google.maps.LatLng(currentCoords[0], currentCoords[1]),
@@ -194,7 +194,7 @@
               }
             });
           
-            // 2) Check Red (Danger) Zones
+            // Check Red (Danger) Zones
             redArea.forEach(c => {
               const d = google.maps.geometry.spherical.computeDistanceBetween(
                 new google.maps.LatLng(currentCoords[0], currentCoords[1]),
@@ -209,7 +209,7 @@
               }
             });
           
-            // Arrival check (runs only after 3 updates)
+            // Arrival check (only after 3 updates)
             if (updateCount > 3) {
               const destDistance = google.maps.geometry.spherical.computeDistanceBetween(
                 new google.maps.LatLng(currentCoords[0], currentCoords[1]),

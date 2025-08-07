@@ -99,12 +99,6 @@
           parseQueryParams();
           // If your URL‐encoded list is [ destLat, destLng, startLat, startLng ]:
           const [ destLat, destLng, startLat, startLng ] = startAndEndLocation;
-          if (window.AppInventor) {
-            window.AppInventor.setWebViewString(JSON.stringify({
-              dbgStart: [startLat, startLng],
-              dbgDest:  [destLat, destLng]
-            }));
-          }
           // inside initMap(), right after parseQueryParams() and destLat/destLng
           // DEBUG: send your parsed route endpoints back to App Inventor
           if (navigator.geolocation) {
@@ -205,21 +199,25 @@
             // 1) bump the tick counter
             updateCount++;
           
-            // 2) only move the blue marker & update InfoBox *after* the first tick
             if (updateCount > 1) {
+              // 1) Move the blue marker
               currentMarker.setPosition({
                 lat: currentCoords[0],
                 lng: currentCoords[1]
               });
-              
-              map.panTo({
-                lat: currentCoords[0],
-                lng: currentCoords[1]
-              });
           
+              // 2) Pan the map (after 7s)
+              if (updateCount > 7) {
+                map.panTo({
+                  lat: currentCoords[0],
+                  lng: currentCoords[1]
+                });
+              }
+          
+              // 3) Distance & duration only
               distanceService.getDistanceMatrix({
-                origins:      [{ lat: currentCoords[0],  lng: currentCoords[1] }],
-                destinations: [{ lat:    destLat,         lng: destLng        }],
+                origins:      [{ lat: currentCoords[0], lng: currentCoords[1] }],
+                destinations: [{ lat: destLat,        lng: destLng        }],
                 travelMode:   selectedMode,
                 unitSystem:   google.maps.UnitSystem.METRIC
               }, (response, status) => {
@@ -231,8 +229,7 @@
                     `<span class="duration">Duration: ${el.duration.text}</span>`;
                 }
               });
-            }  // ← end of updateCount > 1 guard
-          
+            }
             // 3) check all busyAreas every tick
             busyAreas.forEach(c => {
               const d = google.maps.geometry.spherical.computeDistanceBetween(

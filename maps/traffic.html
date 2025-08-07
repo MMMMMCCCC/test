@@ -65,11 +65,7 @@
       function initMap() {
         try {
           parseQueryParams();
-          if (window.AppInventor) {
-            window.AppInventor.setWebViewString(JSON.stringify({
-              debugBusyParsed: busyAreas
-            }));
-          }
+          
           map = new google.maps.Map(document.getElementById('map'), {
             center:{lat:currentCoords[0],lng:currentCoords[1]}, zoom:16
           });
@@ -119,7 +115,7 @@
           );
   
           // Draw walking route
-          calculateAndDisplayRoute(startAndEndLocation,'WALKING');
+          calculateAndDisplayRoute(startAndEndLocation, selectedMode);
   
           // Travel-mode toggle
           document.getElementById('travelMode')

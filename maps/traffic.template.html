@@ -53,9 +53,7 @@
       let currentMarker;
 
       function parseQueryParams() {
-        const p = new URLSearchParams(window.location.search);
         const pj = s => JSON.parse(decodeURIComponent(s||'[]'));
-        currentCoords       = pj(p.get('currentCoords'));
         startAndEndLocation = pj(p.get('startAndEndLocation'));
         // redArea not shown here for brevity...
         const rawRed = pj(p.get('redArea'));
@@ -68,6 +66,18 @@
       function initMap() {
         try {
           parseQueryParams();
+          // inside initMap(), right after parseQueryParams() and destLat/destLng
+          if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(pos => {
+              currentCoords = [ pos.coords.latitude, pos.coords.longitude ];
+            }, err => {
+              console.warn("Geolocation error:", err);
+            }, {
+              enableHighAccuracy: true,
+              maximumAge: 0,
+              timeout: 5000
+            });
+          }
           const [startLat, startLng, destLat, destLng] = startAndEndLocation;
           map = new google.maps.Map(document.getElementById('map'), {
             center:{lat:currentCoords[0],lng:currentCoords[1]}, zoom:16

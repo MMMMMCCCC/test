@@ -155,32 +155,30 @@
 
           setInterval(() => {
             updateCount++;
-          
-            // 1) Refresh currentCoords
-            const p = new URLSearchParams(window.location.search);
-            currentCoords = JSON.parse(decodeURIComponent(p.get('currentCoords') || '[0,0]'));
-          
-            // 2) Move the blue marker
-            currentMarker.setPosition({
-              lat: currentCoords[0],
-              lng: currentCoords[1]
-            });
-          
-            // 3) Re-compute distance & duration
-            distanceService.getDistanceMatrix({
-              origins:      [{ lat: currentCoords[0], lng: currentCoords[1] }],
-              destinations: [{ lat: destLat,       lng: destLng }],
-              travelMode:   selectedMode,
-              unitSystem:   google.maps.UnitSystem.METRIC
-            }, (response, status) => {
-              if (status === 'OK') {
-                const el = response.rows[0].elements[0];
-                document.getElementById('infoBox').innerHTML =
-                  `<span class="distance">Distance: ${el.distance.text}</span>` +
-                  ` &nbsp;•&nbsp; ` +
-                  `<span class="duration">Duration: ${el.duration.text}</span>`;
-              }
-            });
+
+            // only start updating after the first tick
+            if (updateCount > 1) {
+              // move the blue marker
+              currentMarker.setPosition({
+                lat: currentCoords[0],
+                lng: currentCoords[1]
+              });
+            
+              // re-compute distance & duration
+              distanceService.getDistanceMatrix({
+                origins:      [{ lat: currentCoords[0], lng: currentCoords[1] }],
+                destinations: [{ lat: destLat,       lng: destLng }],
+                travelMode:   selectedMode,
+                unitSystem:   google.maps.UnitSystem.METRIC
+              }, (response, status) => {
+                if (status === 'OK') {
+                  const el = response.rows[0].elements[0];
+                  document.getElementById('infoBox').innerHTML =
+                    `<span class="distance">Distance: ${el.distance.text}</span>` +
+                    ` &nbsp;•&nbsp; ` +
+                    `<span class="duration">Duration: ${el.duration.text}</span>`;
+                }
+              });
             // 1) Check Busy Areas
             busyAreas.forEach(c => {
               const d = google.maps.geometry.spherical.computeDistanceBetween(
@@ -213,8 +211,6 @@
           
             // Arrival check (runs only after 3 updates)
             if (updateCount > 3) {
-              const destLat = startAndEndLocation[2];
-              const destLng = startAndEndLocation[3];
               const destDistance = google.maps.geometry.spherical.computeDistanceBetween(
                 new google.maps.LatLng(currentCoords[0], currentCoords[1]),
                 new google.maps.LatLng(destLat, destLng)
@@ -223,7 +219,9 @@
                 notifiedDestination = true;
                 document.getElementById('destinationOverlay').style.display = 'flex';
                 if (window.AppInventor) {
-                  window.AppInventor.setWebViewString(JSON.stringify({ reachedDestination: true }));
+                  window.AppInventor.setWebViewString(
+                    JSON.stringify({ reachedDestination: true })
+                  );
                 }
               }
             }

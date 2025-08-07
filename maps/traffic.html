@@ -71,7 +71,8 @@
       function initMap() {
         try {
           parseQueryParams();
-          const [ startLat, startLng, destLat, destLng ] = startAndEndLocation;
+          // If your URL‐encoded list is [ destLat, destLng, startLat, startLng ]:
+          const [ destLat, destLng, startLat, startLng ] = startAndEndLocation;
           if (window.AppInventor) {
             window.AppInventor.setWebViewString(JSON.stringify({
               dbgStart: [startLat, startLng],

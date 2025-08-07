@@ -67,6 +67,12 @@
         try {
           parseQueryParams();
           const [startLat, startLng, destLat, destLng] = startAndEndLocation;
+          if (window.AppInventor) {
+            window.AppInventor.setWebViewString(JSON.stringify({
+              dbgStart: [startLat, startLng],
+              dbgDest:  [destLat, destLng]
+            }));
+          }
           // inside initMap(), right after parseQueryParams() and destLat/destLng
           // DEBUG: send your parsed route endpoints back to App Inventor
           if (navigator.geolocation) {
@@ -176,8 +182,8 @@
               });
           
               distanceService.getDistanceMatrix({
-                origins:      [{ lat: currentCoords[0], lng: currentCoords[1] }],
-                destinations: [{ lat: destLat,       lng: destLng }],
+                origins:      [{ lat: currentCoords[0],  lng: currentCoords[1] }],
+                destinations: [{ lat:    destLat,         lng: destLng        }],
                 travelMode:   selectedMode,
                 unitSystem:   google.maps.UnitSystem.METRIC
               }, (response, status) => {

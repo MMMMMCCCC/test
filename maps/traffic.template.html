@@ -80,6 +80,14 @@
       let lastPanLocation = null;
       let lastDistanceUpdate = 0, distanceUpdateInterval = 5000; // ms (update every 5s)
 
+      // Add this once inside your page script
+      window.updateLocation = function(lat, lng) {
+        currentCoords = [Number(lat), Number(lng)];
+        if (currentMarker && typeof currentMarker.setPosition === 'function') {
+          currentMarker.setPosition({ lat: Number(lat), lng: Number(lng) });
+        }
+      };
+
       function parseQueryParams() {
         const p = new URLSearchParams(window.location.search);
         const pj = s => JSON.parse(decodeURIComponent(s || '[]'));

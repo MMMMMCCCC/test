@@ -46,10 +46,10 @@
         top:   0; left: 0;
         width: 100%; height: 100%;
         background: rgba(0,0,0,0.5);
-        display: none;                /* show via JS */
-        align-items: center;          /* vertical centering */
-        justify-content: center;      /* horizontal centering */
-        z-index: 1000;                /* above the map */
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
       }
       #destinationOverlay .modal {
         background: white;
@@ -70,7 +70,7 @@
     </style>
     <script>
       let map, directionsService, directionsRenderer;
-      // sensible defaults so we never pass undefined into Google calls
+      // sensible defaults
       let currentCoords = [0, 0];
       let startAndEndLocation = [];
       let redArea = [];
@@ -81,58 +81,186 @@
       let updateCount = 0;
       let distanceService;
       let currentMarker;
-      let lastPanLocation = null;
-      // add these
-      let lastUserInteraction = 0;      // timestamp (ms) when user last touched/dragged/zoomed
-      const autoPanDelay = 7000;        // don't auto-pan until X ms after last user interaction
-      const panDistanceThreshold = 10;  // meters before we auto-pan (avoid jitter)
+      let mapCircles = []; // store circles so they persist visually
+
+      // ---- helper functions (robust parsing & storage) ----
+      function safeJSONParseMaybeEncoded(s) {
+        if (s === null || s === undefined) return null;
+        const attempts = [
+          str => JSON.parse(str),
+          str => JSON.parse(decodeURIComponent(str)),
+          str => JSON.parse(decodeURIComponent(decodeURIComponent(str)))
+        ];
+        for (const fn of attempts) {
+          try { return fn(s); } catch (e) { /* continue */ }
+        }
+        // last-resort eval-like parse for arrays/objects
+        try { return (new Function('return ' + s))(); } catch (e) { return null; }
+      }
+
+      function toLatLngObj(arrOrObj) {
+        if (!arrOrObj) return null;
+        if (Array.isArray(arrOrObj) && arrOrObj.length >= 2) {
+          const a0 = parseFloat(arrOrObj[0]);
+          const a1 = parseFloat(arrOrObj[1]);
+          if (!isFinite(a0) || !isFinite(a1)) return null;
+          // if first fits latitude range, use [lat,lng]; else assume reversed
+          if (Math.abs(a0) <= 90 && Math.abs(a1) <= 180) return { lat: a0, lng: a1 };
+          return { lat: a1, lng: a0 };
+        }
+        if (arrOrObj.lat !== undefined && arrOrObj.lng !== undefined) {
+          return { lat: parseFloat(arrOrObj.lat), lng: parseFloat(arrOrObj.lng) };
+        }
+        return null;
+      }
+
+      function saveAreasToStorage() {
+        try {
+          localStorage.setItem('traffic_redArea', JSON.stringify(redArea));
+          localStorage.setItem('traffic_busyAreas', JSON.stringify(busyAreas));
+        } catch (e) { /* ignore storage errors */ }
+      }
+
+      function loadAreasFromStorage() {
+        try {
+          const r = localStorage.getItem('traffic_redArea');
+          const b = localStorage.getItem('traffic_busyAreas');
+          if (r) {
+            const parsed = JSON.parse(r);
+            if (Array.isArray(parsed)) redArea = parsed;
+          }
+          if (b) {
+            const parsed = JSON.parse(b);
+            if (Array.isArray(parsed)) busyAreas = parsed;
+          }
+        } catch (e) { /* ignore */ }
+      }
 
       function parseQueryParams() {
         const p = new URLSearchParams(window.location.search);
-        const pj = s => {
-          try {
-            if (!s) return [];
-            // some callers double-encode; try decode then JSON.parse
-            return JSON.parse(decodeURIComponent(s));
-          } catch (e) {
-            // last resort: try raw parse (maybe it's already an array/object)
-            try { return JSON.parse(s); } catch(e2) { return []; }
+
+        // currentCoords
+        const ccRaw = p.get('currentCoords');
+        if (ccRaw) {
+          const parsed = safeJSONParseMaybeEncoded(ccRaw);
+          if (Array.isArray(parsed) && parsed.length >= 2) {
+            currentCoords = [ parseFloat(parsed[0]), parseFloat(parsed[1]) ];
           }
-        };
+        }
 
-        // live location passed from App Inventor
-        const cc = pj(p.get('currentCoords'));
-        if (Array.isArray(cc) && cc.length >= 2) currentCoords = cc;
+        // startAndEndLocation
+        const saeRaw = p.get('startAndEndLocation');
+        if (saeRaw) {
+          const parsed = safeJSONParseMaybeEncoded(saeRaw);
+          if (Array.isArray(parsed)) {
+            // flatten stringified items if needed
+            startAndEndLocation = parsed.map(x => {
+              if (typeof x === 'string') {
+                const p2 = safeJSONParseMaybeEncoded(x);
+                return (p2 !== null && typeof p2 !== 'object') ? p2 : x;
+              }
+              return x;
+            });
+          }
+        }
 
-        // static start+end passed from App Inventor
-        const sae = pj(p.get('startAndEndLocation'));
-        if (Array.isArray(sae)) startAndEndLocation = sae;
-
-        // circles: raw entries may be stringified arrays or arrays
-        const rawRed  = pj(p.get('redArea')) || [];
-        const rawBusy = pj(p.get('busyAreas')) || [];
-
-        redArea = (Array.isArray(rawRed) ? rawRed : []).map(item => {
-          try {
-            const a = (typeof item === 'string') ? JSON.parse(item) : item;
-            if (!Array.isArray(a)) return null;
-            // decide which index is latitude (latitude is in -90..90)
-            return (Math.abs(a[0]) <= 90) ? { lat: a[0], lng: a[1] } : { lat: a[1], lng: a[0] };
-          } catch (e) { return null; }
+        // redArea (accept many formats)
+        let rawRed = [];
+        const redParam = p.get('redArea');
+        if (redParam) {
+          const parsed = safeJSONParseMaybeEncoded(redParam);
+          if (Array.isArray(parsed)) rawRed = parsed;
+          else if (parsed !== null) rawRed = [ parsed ];
+        } else {
+          // support multiple ?redArea=... occurrences
+          const all = p.getAll('redArea');
+          if (all && all.length) {
+            all.forEach(item => {
+              const parsed = safeJSONParseMaybeEncoded(item);
+              if (parsed !== null) rawRed.push(parsed);
+            });
+          }
+        }
+        const newRed = (Array.isArray(rawRed) ? rawRed : []).map(item => {
+          const candidate = (typeof item === 'string') ? safeJSONParseMaybeEncoded(item) : item;
+          return toLatLngObj(candidate);
         }).filter(Boolean);
 
-        busyAreas = (Array.isArray(rawBusy) ? rawBusy : []).map(item => {
-          try {
-            const a = (typeof item === 'string') ? JSON.parse(item) : item;
-            if (Array.isArray(a) && a.length >= 2) {
-              return (Math.abs(a[0]) <= 90) ? { lat: a[0], lng: a[1] } : { lat: a[1], lng: a[0] };
-            }
-            if (a && a.lat !== undefined && a.lng !== undefined) return { lat: a.lat, lng: a.lng };
-            return null;
-          } catch (e) { return null; }
+        // busyAreas similarly
+        let rawBusy = [];
+        const busyParam = p.get('busyAreas');
+        if (busyParam) {
+          const parsed = safeJSONParseMaybeEncoded(busyParam);
+          if (Array.isArray(parsed)) rawBusy = parsed;
+          else if (parsed !== null) rawBusy = [ parsed ];
+        } else {
+          const allB = p.getAll('busyAreas');
+          if (allB && allB.length) {
+            allB.forEach(item => {
+              const parsed = safeJSONParseMaybeEncoded(item);
+              if (parsed !== null) rawBusy.push(parsed);
+            });
+          }
+        }
+        const newBusy = (Array.isArray(rawBusy) ? rawBusy : []).map(item => {
+          const candidate = (typeof item === 'string') ? safeJSONParseMaybeEncoded(item) : item;
+          return toLatLngObj(candidate);
         }).filter(Boolean);
+
+        // apply parsed areas (or load from storage if missing)
+        if (newRed.length) {
+          redArea = newRed;
+          saveAreasToStorage();
+        } else {
+          loadAreasFromStorage();
+        }
+        if (newBusy.length) {
+          busyAreas = newBusy;
+          saveAreasToStorage();
+        } // else keep loaded busyAreas if any
       }
 
+      function clearMapCircles() {
+        if (!mapCircles || !mapCircles.length) return;
+        mapCircles.forEach(c => c.setMap(null));
+        mapCircles = [];
+      }
+
+      function addDangerCirclesToMap() {
+        clearMapCircles();
+        redArea.forEach(c => {
+          if (!c || typeof c.lat !== 'number' || typeof c.lng !== 'number') return;
+          const circle = new google.maps.Circle({
+            map: map,
+            center: c,
+            radius: 600,
+            strokeColor: '#FF0000',
+            strokeOpacity: 0.9,
+            strokeWeight: 2,
+            fillColor: '#FF6666',
+            fillOpacity: 0.4,
+            zIndex: 1000
+          });
+          mapCircles.push(circle);
+        });
+        busyAreas.forEach(c => {
+          if (!c || typeof c.lat !== 'number' || typeof c.lng !== 'number') return;
+          const circle = new google.maps.Circle({
+            map: map,
+            center: c,
+            radius: 100,
+            strokeColor: '#FFD700',
+            strokeOpacity: 1,
+            strokeWeight: 2,
+            fillColor: '#FFFF00',
+            fillOpacity: 0.4,
+            zIndex: 1002
+          });
+          mapCircles.push(circle);
+        });
+      }
+
+      // ---- main map init ----
       function initMap() {
         try {
           parseQueryParams();
@@ -140,21 +268,16 @@
           // Normalize start/end coords - accept either [sLat,sLng,eLat,eLng] OR [destLat,destLng,startLat,startLng]
           let sLat, sLng, eLat, eLng;
           if (startAndEndLocation && startAndEndLocation.length === 4) {
-            // If first element looks like a latitude (-90..90), assume [sLat,sLng,eLat,eLng]
             if (Math.abs(startAndEndLocation[0]) <= 90) {
-              [sLat, sLng, eLat, eLng] = startAndEndLocation;
+              [sLat, sLng, eLat, eLng] = startAndEndLocation.map(v => parseFloat(v));
             } else {
-              // otherwise fallback to previous ordering used elsewhere
-              [eLat, eLng, sLat, sLng] = startAndEndLocation;
+              [eLat, eLng, sLat, sLng] = startAndEndLocation.map(v => parseFloat(v));
             }
-          } else {
-            // leave as undefined if not present
           }
 
-          // Determine initial center: prefer currentCoords, then start, then end, else 0,0
           const center = {
-            lat: (currentCoords && currentCoords[0]) ? currentCoords[0] : (sLat || eLat || 0),
-            lng: (currentCoords && currentCoords[1]) ? currentCoords[1] : (sLng || eLng || 0)
+            lat: (currentCoords && currentCoords[0]) ? parseFloat(currentCoords[0]) : (sLat || eLat || 0),
+            lng: (currentCoords && currentCoords[1]) ? parseFloat(currentCoords[1]) : (sLng || eLng || 0)
           };
 
           map = new google.maps.Map(document.getElementById('map'), {
@@ -162,16 +285,8 @@
             zoom: 16
           });
 
-          // mark the time whenever user interacts with the map
-          function markUserInteraction() { lastUserInteraction = Date.now(); }
-          map.addListener('dragstart', markUserInteraction);
-          map.addListener('mousedown', markUserInteraction);
-          map.addListener('touchstart', markUserInteraction);
-          map.addListener('zoom_changed', markUserInteraction);
-          // 'idle' fires after move/zoom completes — record that too
-          map.addListener('idle', () => { lastUserInteraction = Date.now(); });
+          // NOTE: Auto-panning removed — user controls map (no auto-pan listeners)
 
-          // Traffic layer
           new google.maps.TrafficLayer().setMap(map);
           directionsService  = new google.maps.DirectionsService();
           directionsRenderer = new google.maps.DirectionsRenderer({
@@ -181,7 +296,7 @@
 
           // Blue marker = current location
           currentMarker = new google.maps.Marker({
-            position: { lat: currentCoords[0], lng: currentCoords[1] },
+            position: { lat: center.lat, lng: center.lng },
             map: map,
             icon: {
               path: google.maps.SymbolPath.CIRCLE,
@@ -193,40 +308,12 @@
             }
           });
 
-          // Set up DistanceMatrixService
           distanceService = new google.maps.DistanceMatrixService();
 
-          // Danger circles
-          redArea.forEach(c => {
-            new google.maps.Circle({
-              map: map,
-              center: c,
-              radius: 600,
-              strokeColor: '#FF0000',
-              strokeOpacity: 0.9,
-              strokeWeight: 2,
-              fillColor: '#FF6666',
-              fillOpacity: 0.4,
-              zIndex: 1000
-            });
-          });
+          // Draw the persisted/parsed circles
+          addDangerCirclesToMap();
 
-          // Busy-area circles (yellow)
-          if (busyAreas.length) busyAreas.forEach(c =>
-            new google.maps.Circle({
-              map: map,
-              center: c,
-              radius: 100,
-              strokeColor: '#FFD700',
-              strokeOpacity: 1,
-              strokeWeight: 2,
-              fillColor: '#FFFF00',
-              fillOpacity: 0.4,
-              zIndex: 1002
-            })
-          );
-
-          // Draw walking route only if we have full start & end
+          // Draw route if we have start+end
           if (typeof sLat !== 'undefined' && typeof sLng !== 'undefined' &&
               typeof eLat !== 'undefined' && typeof eLng !== 'undefined') {
             calculateAndDisplayRoute([sLat, sLng, eLat, eLng], selectedMode);
@@ -242,7 +329,7 @@
               }
             });
 
-          // Report Busy button
+          // Report Busy
           document.getElementById('reportBusy')
             .addEventListener('click', () => {
               if (window.AppInventor) {
@@ -272,30 +359,14 @@
             updateCount++;
 
             if (updateCount > 1) {
-              // move marker (safe positions)
-              const newLat = currentCoords[0] || center.lat;
-              const newLng = currentCoords[1] || center.lng;
+              const newLat = (currentCoords && currentCoords[0]) ? parseFloat(currentCoords[0]) : center.lat;
+              const newLng = (currentCoords && currentCoords[1]) ? parseFloat(currentCoords[1]) : center.lng;
               const newPos = { lat: newLat, lng: newLng };
               currentMarker.setPosition(newPos);
 
-              // PAN: only if enough time has passed since user last interacted AND moved > threshold
-              if (updateCount > 7) {
-                const newLatLng = new google.maps.LatLng(newPos.lat, newPos.lng);
+              // Auto-pan removed — DO NOT change map center automatically
 
-                const movedFarEnough = !lastPanLocation ||
-                  google.maps.geometry.spherical.computeDistanceBetween(newLatLng, lastPanLocation) > panDistanceThreshold;
-
-                const timeSinceUser = Date.now() - lastUserInteraction;
-                const userIsIdle = timeSinceUser > autoPanDelay;
-
-                if (movedFarEnough && userIsIdle) {
-                  map.panTo(newLatLng);
-                  lastPanLocation = newLatLng;
-                }
-              }
-
-              // Distance Matrix for display (IMPERIAL units)
-              // Only if we have a destination
+              // Distance Matrix for display (IMPERIAL units) — only if destination present
               if (typeof eLat !== 'undefined' && typeof eLng !== 'undefined') {
                 distanceService.getDistanceMatrix({
                   origins:      [{ lat: newPos.lat, lng: newPos.lng }],
@@ -322,9 +393,13 @@
               }
             }
 
-            // check busyAreas and redArea
-            const curLatLng = new google.maps.LatLng(currentCoords[0] || center.lat, currentCoords[1] || center.lng);
+            // proximity checks against busyAreas / redArea
+            const curLat = (currentCoords && currentCoords[0]) ? currentCoords[0] : center.lat;
+            const curLng = (currentCoords && currentCoords[1]) ? currentCoords[1] : center.lng;
+            const curLatLng = new google.maps.LatLng(curLat, curLng);
+
             busyAreas.forEach(c => {
+              if (!c) return;
               const d = google.maps.geometry.spherical.computeDistanceBetween(curLatLng, new google.maps.LatLng(c.lat, c.lng));
               if (d < 50 && window.AppInventor) {
                 window.AppInventor.setWebViewString(JSON.stringify({
@@ -334,7 +409,9 @@
                 }));
               }
             });
+
             redArea.forEach(c => {
+              if (!c) return;
               const d = google.maps.geometry.spherical.computeDistanceBetween(curLatLng, new google.maps.LatLng(c.lat, c.lng));
               if (d < 50 && window.AppInventor) {
                 window.AppInventor.setWebViewString(JSON.stringify({
@@ -345,7 +422,7 @@
               }
             });
 
-            // arrival check (after a few ticks)
+            // arrival check
             if (updateCount > 3 && typeof eLat !== 'undefined' && typeof eLng !== 'undefined') {
               const destDistance = google.maps.geometry.spherical.computeDistanceBetween(
                 curLatLng,
@@ -359,7 +436,7 @@
                 }
               }
             }
-          }, 1000); // 1s tick
+          }, 1000);
 
         } catch (e) {
           if (window.AppInventor) {
@@ -371,7 +448,6 @@
 
       function calculateAndDisplayRoute([sLat,sLng,eLat,eLng], mode) {
         if (!directionsService) return;
-        // guard: ensure numbers present
         if (typeof sLat === 'undefined' || typeof sLng === 'undefined' ||
             typeof eLat === 'undefined' || typeof eLng === 'undefined') return;
 
@@ -399,6 +475,7 @@
           }
         });
       }
+
       function hideDestinationOverlay() {
         document.getElementById('destinationOverlay').style.display = 'none';
       }
@@ -430,3 +507,5 @@
     </script>
   </body>
 </html>
+
+

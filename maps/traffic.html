@@ -10,6 +10,7 @@
         margin: 0;
         padding: 0;
       }
+      /* Travel-mode dropdown */
       #modeToggle {
         position: absolute; top: 10px; left: 50%;
         transform: translateX(-50%);
@@ -17,8 +18,14 @@
         border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         font-family: sans-serif; z-index:5;
       }
-      #modeToggle label { font-size:18px; font-weight:bold; color:#0000CD; margin-right:8px; }
-      #modeToggle select { font-size:18px; color:#0000CD; padding:4px; }
+      #modeToggle label {
+        font-size:18px; font-weight:bold; color:#0000CD;
+        margin-right:8px;
+      }
+      #modeToggle select {
+        font-size:18px; color:#0000CD; padding:4px;
+      }
+      /* Info box */
       #infoBox {
         position:absolute; bottom:60px; left:0; width:100%;
         background:rgba(255,255,255,0.9); padding:12px;
@@ -27,6 +34,7 @@
       }
       #infoBox .distance { color:#FF8C00; font-weight:bold }
       #infoBox .duration { color:#008000; font-weight:bold }
+      /* Buttons */
       .btn {
         position:absolute; padding:10px 14px; font-size:16px;
         border:none; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.3);
@@ -34,243 +42,91 @@
       }
       #reportBusy { bottom: 135px; right: 10px; }
       #destinationOverlay {
-        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(0,0,0,0.5); display: none; align-items: center;
-        justify-content: center; z-index: 1000;
+        position: absolute;
+        top:   0; left: 0;
+        width: 100%; height: 100%;
+        background: rgba(0,0,0,0.5);
+        display: none;                /* show via JS */
+        align-items: center;          /* vertical centering */
+        justify-content: center;      /* horizontal centering */
+        z-index: 1000;                /* above the map */
       }
       #destinationOverlay .modal {
-        background: white; padding: 24px 32px; border-radius: 8px;
-        text-align: center; max-width: 80%; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        background: white;
+        padding: 24px 32px;
+        border-radius: 8px;
+        text-align: center;
+        max-width: 80%;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      }
+      #destinationOverlay .modal h2 {
+        margin-top: 0;
+        font-size: 22px;
+      }
+      #destinationOverlay .modal p {
+        font-size: 16px;
+        margin: 12px 0;
       }
     </style>
     <script>
       let map, directionsService, directionsRenderer;
-      let currentCoords = [0, 0];
-      let startAndEndLocation = [];
-      let redArea = [];
-      let busyAreas = [];
+      let currentCoords, startAndEndLocation, redArea, busyAreas;
 
       let notifiedDestination = false;
       let selectedMode = 'WALKING';
       let updateCount = 0;
       let distanceService;
       let currentMarker;
-      let mapCircles = [];
-
-      // initial distance logic
-      let initialDestDistance = null;
-
-      // --- helpers ---
-      function safeJSONParseMaybeEncoded(s) {
-        if (s === null || s === undefined) return null;
-        try { return JSON.parse(s); } catch (e) {}
-        try { return JSON.parse(decodeURIComponent(s)); } catch (e) {}
-        try { return JSON.parse(decodeURIComponent(decodeURIComponent(s))); } catch (e) {}
-        return null;
-      }
-
-      function toLatLngStrict(item) {
-        if (!item) return null;
-        if (typeof item === 'string') {
-          const parsed = safeJSONParseMaybeEncoded(item);
-          if (Array.isArray(parsed) && parsed.length >= 2) {
-            const lat = parseFloat(parsed[0]);
-            const lng = parseFloat(parsed[1]);
-            if (isFinite(lat) && isFinite(lng)) return { lat, lng };
-            return null;
-          }
-          return null;
-        }
-        if (Array.isArray(item) && item.length >= 2) {
-          const lat = parseFloat(item[0]);
-          const lng = parseFloat(item[1]);
-          if (isFinite(lat) && isFinite(lng)) return { lat, lng };
-          return null;
-        }
-        if (item.lat !== undefined && item.lng !== undefined) {
-          const lat = parseFloat(item.lat);
-          const lng = parseFloat(item.lng);
-          if (isFinite(lat) && isFinite(lng)) return { lat, lng };
-        }
-        return null;
-      }
-
-      function validateLatLng(obj) {
-        if (!obj) return false;
-        const lat = parseFloat(obj.lat);
-        const lng = parseFloat(obj.lng);
-        if (!isFinite(lat) || !isFinite(lng)) return false;
-        if (lat < -90 || lat > 90) return false;
-        if (lng < -180 || lng > 180) return false;
-        return true;
-      }
-
-      function clearMapCircles() {
-        if (!mapCircles) return;
-        mapCircles.forEach(c => c.setMap(null));
-        mapCircles = [];
-      }
-
-      function drawCircles() {
-        clearMapCircles();
-        redArea.forEach(c => {
-          if (!validateLatLng(c)) return;
-          const circle = new google.maps.Circle({
-            map: map,
-            center: c,
-            radius: 450,
-            strokeColor: '#FF0000',
-            strokeOpacity: 0.9,
-            strokeWeight: 2,
-            fillColor: '#FF6666',
-            fillOpacity: 0.4,
-            zIndex: 1000
-          });
-          mapCircles.push(circle);
-        });
-        busyAreas.forEach(c => {
-          if (!validateLatLng(c)) return;
-          const circle = new google.maps.Circle({
-            map: map,
-            center: c,
-            radius: 100,
-            strokeColor: '#FFD700',
-            strokeOpacity: 1,
-            strokeWeight: 2,
-            fillColor: '#FFFF00',
-            fillOpacity: 0.4,
-            zIndex: 1002
-          });
-          mapCircles.push(circle);
-        });
-      }
+      let lastPanLocation = null;
 
       function parseQueryParams() {
         const p = new URLSearchParams(window.location.search);
-
-        // currentCoords: expect JSON array [lat,lng]
-        const ccRaw = p.get('currentCoords');
-        if (ccRaw) {
-          const parsed = safeJSONParseMaybeEncoded(ccRaw);
-          if (Array.isArray(parsed) && parsed.length >= 2) {
-            const lat = parseFloat(parsed[0]);
-            const lng = parseFloat(parsed[1]);
-            if (isFinite(lat) && isFinite(lng)) currentCoords = [lat, lng];
-          }
-        }
-
-        // startAndEndLocation: **YOUR FORMAT IS: END first, then START**
-        // i.e. [endLat, endLng, startLat, startLng]
-        const saeRaw = p.get('startAndEndLocation');
-        if (saeRaw) {
-          const parsed = safeJSONParseMaybeEncoded(saeRaw);
-          if (Array.isArray(parsed) && parsed.length >= 4) {
-            // flatten if string components present
-            startAndEndLocation = parsed.map(v => {
-              if (typeof v === 'string') {
-                const p2 = safeJSONParseMaybeEncoded(v);
-                if (Array.isArray(p2)) return p2[0]; // unlikely, but keep safe
-                const n = parseFloat(v);
-                return isFinite(n) ? n : v;
-              }
-              return v;
-            });
-          }
-        }
-
-        // redArea handling (assume canonical [lat,lng])
-// Replace your redArea block with this (forces [lat,lng] — no swapping)
-        let rawRed = [];
-        const redParam = p.get('redArea');
-        if (redParam) {
-          const parsed = safeJSONParseMaybeEncoded(redParam);
-          if (Array.isArray(parsed)) rawRed = parsed;
-          else if (parsed !== null) rawRed = [ parsed ];
-        } else {
-          const all = p.getAll('redArea');
-          if (all && all.length) {
-            all.forEach(it => {
-              const parsed = safeJSONParseMaybeEncoded(it);
-              if (parsed !== null) rawRed.push(parsed);
-            });
-          }
-        }
-        redArea = (Array.isArray(rawRed) ? rawRed : []).map(item => {
-          const candidate = (typeof item === 'string') ? safeJSONParseMaybeEncoded(item) : item;
-          if (!candidate) return null;
-          // Expect canonical [lat, lng] or {lat:..., lng:...}
-          if (Array.isArray(candidate) && candidate.length >= 2) {
-            const lat = parseFloat(candidate[0]);
-            const lng = parseFloat(candidate[1]);
-            return (isFinite(lat) && isFinite(lng)) ? { lat, lng } : null;
-          }
-          if (candidate.lat !== undefined && candidate.lng !== undefined) {
-            const lat = parseFloat(candidate.lat);
-            const lng = parseFloat(candidate.lng);
-            return (isFinite(lat) && isFinite(lng)) ? { lat, lng } : null;
-          }
-          return null;
-        }).filter(Boolean);
-
-
-        // busyAreas same
-        let rawBusy = [];
-        const busyParam = p.get('busyAreas');
-        if (busyParam) {
-          const parsed = safeJSONParseMaybeEncoded(busyParam);
-          if (Array.isArray(parsed)) rawBusy = parsed;
-          else if (parsed !== null) rawBusy = [ parsed ];
-        } else {
-          const allB = p.getAll('busyAreas');
-          if (allB && allB.length) {
-            allB.forEach(it => {
-              const parsed = safeJSONParseMaybeEncoded(it);
-              if (parsed !== null) rawBusy.push(parsed);
-            });
-          }
-        }
-        busyAreas = (Array.isArray(rawBusy) ? rawBusy : []).map(toLatLngStrict).filter(Boolean);
+        const pj = s => JSON.parse(decodeURIComponent(s || '[]'));
+      
+        // live location passed from App Inventor
+        currentCoords       = pj(p.get('currentCoords'));
+        // static start+end passed from App Inventor
+        startAndEndLocation = pj(p.get('startAndEndLocation'));
+        // circles
+        const rawRed  = pj(p.get('redArea'));
+        const rawBusy = pj(p.get('busyAreas'));
+      
+        redArea   = rawRed .map(s => { const a = JSON.parse(s); return {lat:a[1],lng:a[0]}; }).filter(x=>x);
+        busyAreas = rawBusy.map(a => ({lat:a[0],lng:a[1]}));
       }
 
-      // --- main ---
       function initMap() {
         try {
           parseQueryParams();
-
-          // Interpret startAndEndLocation as [endLat, endLng, startLat, startLng]
-          let sLat, sLng, eLat, eLng;
-          if (Array.isArray(startAndEndLocation) && startAndEndLocation.length >= 4) {
-            eLat = parseFloat(startAndEndLocation[0]);
-            eLng = parseFloat(startAndEndLocation[1]);
-            sLat = parseFloat(startAndEndLocation[2]);
-            sLng = parseFloat(startAndEndLocation[3]);
-            if (![eLat,eLng,sLat,sLng].every(v => isFinite(v))) {
-              sLat = sLng = eLat = eLng = undefined;
-            }
+          // If your URL‐encoded list is [ destLat, destLng, startLat, startLng ]:
+          const [ destLat, destLng, startLat, startLng ] = startAndEndLocation;
+          // inside initMap(), right after parseQueryParams() and destLat/destLng
+          // DEBUG: send your parsed route endpoints back to App Inventor
+          if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(pos => {
+              currentCoords = [ pos.coords.latitude, pos.coords.longitude ];
+            }, err => {
+              console.warn("Geolocation error:", err);
+            }, {
+              enableHighAccuracy: true,
+              maximumAge: 0,
+              timeout: 5000
+            });
           }
-
-          const center = {
-            lat: (currentCoords && isFinite(currentCoords[0])) ? currentCoords[0] : (sLat || eLat || 0),
-            lng: (currentCoords && isFinite(currentCoords[1])) ? currentCoords[1] : (sLng || eLng || 0)
-          };
-
           map = new google.maps.Map(document.getElementById('map'), {
-            center,
-            zoom: 16
+            center:{lat:currentCoords[0],lng:currentCoords[1]}, zoom:16
           });
-
-          // No auto-pan — user controls the map
-
+          // Traffic layer
           new google.maps.TrafficLayer().setMap(map);
           directionsService  = new google.maps.DirectionsService();
           directionsRenderer = new google.maps.DirectionsRenderer({
             map: map,
             preserveViewport: true
           });
-
-          // Blue marker = initial current (or center)
+  
+          // Blue marker = current location
           currentMarker = new google.maps.Marker({
-            position: { lat: center.lat, lng: center.lng },
+            position: { lat: currentCoords[0], lng: currentCoords[1] },
             map: map,
             icon: {
               path: google.maps.SymbolPath.CIRCLE,
@@ -281,147 +137,162 @@
               strokeColor: 'white'
             }
           });
-
+          
+          // Set up DistanceMatrixService
           distanceService = new google.maps.DistanceMatrixService();
-
-          // draw red/busy circles (strict [lat,lng])
-          drawCircles();
-
-          // compute initialDestDistance: prefer start -> end if start exists,
-          // otherwise use currentCoords -> end
-          if (typeof eLat !== 'undefined' && typeof eLng !== 'undefined') {
-            try {
-              let fromPoint;
-              if (typeof sLat !== 'undefined' && typeof sLng !== 'undefined') {
-                fromPoint = new google.maps.LatLng(sLat, sLng);
-              } else {
-                fromPoint = new google.maps.LatLng(center.lat, center.lng);
-              }
-              const destPoint = new google.maps.LatLng(eLat, eLng);
-              initialDestDistance = google.maps.geometry.spherical.computeDistanceBetween(fromPoint, destPoint);
-            } catch (err) {
-              initialDestDistance = null;
-            }
-            // draw route using start -> end (note we interpret input as end-first)
-            if (typeof sLat !== 'undefined' && typeof sLng !== 'undefined') {
-              calculateAndDisplayRoute([sLat, sLng, eLat, eLng], selectedMode);
-            } else {
-              // if start missing, still attempt a route from currentCoords (if valid)
-              if (isFinite(center.lat) && isFinite(center.lng)) {
-                calculateAndDisplayRoute([center.lat, center.lng, eLat, eLng], selectedMode);
-              }
-            }
-          }
-
-          // travel-mode toggle
-          document.getElementById('travelMode').addEventListener('change', e => {
-            selectedMode = e.target.value;
-            if (typeof eLat !== 'undefined' && typeof eLng !== 'undefined') {
-              // prefer provided start; else use center/currentCoords
-              const fromLat = (typeof sLat !== 'undefined') ? sLat : center.lat;
-              const fromLng = (typeof sLng !== 'undefined') ? sLng : center.lng;
-              calculateAndDisplayRoute([fromLat, fromLng, eLat, eLng], selectedMode);
-            }
+  
+          // Danger circles
+          redArea.forEach(c => {
+            new google.maps.Circle({
+              map: map,
+              center: c,               // use the object directly
+              radius: 600,             // a bit larger for visibility
+              strokeColor: '#FF0000',
+              strokeOpacity: 0.9,
+              strokeWeight: 2,
+              fillColor: '#FF6666',
+              fillOpacity: 0.4,
+              zIndex: 1000             // draw above roads
+            });
           });
+  
+          // Busy-area circles (yellow)
+          if (busyAreas.length) busyAreas.forEach(c =>
+            new google.maps.Circle({
+              map: map,
+              center: c,
+              radius: 100,               // bigger radius
+              strokeColor: '#FFD700',    // bright gold border
+              strokeOpacity: 1,          // fully opaque border
+              strokeWeight: 2,           // thicker border
+              fillColor: '#FFFF00',      // pure yellow fill
+              fillOpacity: 0.4,          // more visible
+              zIndex: 1002               // above everything else
+            })
+          );
+  
+          // Draw walking route
+          calculateAndDisplayRoute(startAndEndLocation, selectedMode);
+  
+          // Travel-mode toggle
+          document.getElementById('travelMode')
+            .addEventListener('change', e => {
+              selectedMode = e.target.value;
+              calculateAndDisplayRoute(startAndEndLocation, selectedMode);
+            });
+  
+          // Report Busy button
+          document.getElementById('reportBusy')
+            .addEventListener('click', () => {
+              if (window.AppInventor) {
+                window.AppInventor.setWebViewString(JSON.stringify({
+                  reportBusy: true,
+                  lat: currentCoords[0],
+                  lng: currentCoords[1]
+                }));
+              }
+            });  // ← close the click-function and addEventListener
+          
+          // Check proximity every 5s
+          // Inside your initMap(), replace or add the following setInterval section:
 
-          // report busy
-          document.getElementById('reportBusy').addEventListener('click', () => {
-            if (window.AppInventor) {
-              window.AppInventor.setWebViewString(JSON.stringify({
-                reportBusy: true,
+          setInterval(() => {
+            // 1) bump the tick counter
+            updateCount++;
+          
+            if (updateCount > 1) {
+              // 1) Move the blue marker
+              currentMarker.setPosition({
                 lat: currentCoords[0],
                 lng: currentCoords[1]
-              }));
-            }
-          });
-
-          // watch position updates
-          if (navigator.geolocation) {
-            navigator.geolocation.watchPosition(pos => {
-              currentCoords = [ pos.coords.latitude, pos.coords.longitude ];
-            }, err => {
-              console.warn("Geolocation error:", err);
-            }, { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 });
-          }
-
-          // periodic tick: update marker, distance, proximity checks
-          setInterval(() => {
-            updateCount++;
-            if (updateCount > 1) {
-              const newLat = (currentCoords && isFinite(currentCoords[0])) ? parseFloat(currentCoords[0]) : center.lat;
-              const newLng = (currentCoords && isFinite(currentCoords[1])) ? parseFloat(currentCoords[1]) : center.lng;
-              const newPos = { lat: newLat, lng: newLng };
-              currentMarker.setPosition(newPos);
-
-              // update distance/duration if we have destination
-              if (typeof eLat !== 'undefined' && typeof eLng !== 'undefined') {
-                distanceService.getDistanceMatrix({
-                  origins:      [{ lat: newPos.lat, lng: newPos.lng }],
-                  destinations: [{ lat: eLat,        lng: eLng        }],
-                  travelMode:   selectedMode,
-                  unitSystem: google.maps.UnitSystem.IMPERIAL
-                }, (response, status) => {
-                  if (status === 'OK' &&
-                      response.rows && response.rows[0] &&
-                      response.rows[0].elements && response.rows[0].elements[0] &&
-                      response.rows[0].elements[0].status === 'OK') {
-                    const el = response.rows[0].elements[0];
-                    document.getElementById('infoBox').innerHTML =
-                      `<span class="distance">Distance: ${el.distance.text}</span>` +
-                      ` &nbsp;•&nbsp; ` +
-                      `<span class="duration">Duration: ${el.duration.text}</span>`;
-                    if (window.AppInventor) {
-                      window.AppInventor.setWebViewString(JSON.stringify({
-                        distance: el.distance.text, duration: el.duration.text
-                      }));
-                    }
-                  }
-                });
+              });
+          
+              // 2) Pan the map (after 7s)
+              if (updateCount > 7) {
+                const newLatLng = new google.maps.LatLng(currentCoords[0], currentCoords[1]);
+              
+                // Only pan if moved more than ~10 meters
+                if (!lastPanLocation || 
+                    google.maps.geometry.spherical.computeDistanceBetween(newLatLng, lastPanLocation) > 10) {
+                  map.panTo(newLatLng);
+                  lastPanLocation = newLatLng;
+                }
               }
+              // 3) Distance & duration only
+              distanceService.getDistanceMatrix({
+                origins:      [{ lat: currentCoords[0], lng: currentCoords[1] }],
+                destinations: [{ lat: destLat,        lng: destLng        }],
+                travelMode:   selectedMode,
+                unitSystem: google.maps.UnitSystem.IMPERIAL
+              }, (response, status) => {
+                if (status === 'OK') {
+                  const el = response.rows[0].elements[0];
+                  document.getElementById('infoBox').innerHTML =
+                    `<span class="distance">Distance: ${el.distance.text}</span>` +
+                    ` &nbsp;•&nbsp; ` +
+                    `<span class="duration">Duration: ${el.duration.text}</span>`;
+                }
+              });
             }
-
-            // proximity checks
-            const curLat = (currentCoords && isFinite(currentCoords[0])) ? currentCoords[0] : center.lat;
-            const curLng = (currentCoords && isFinite(currentCoords[1])) ? currentCoords[1] : center.lng;
-            const curLatLng = new google.maps.LatLng(curLat, curLng);
-
+            // 3) check all busyAreas every tick
             busyAreas.forEach(c => {
-              if (!validateLatLng(c)) return;
-              const d = google.maps.geometry.spherical.computeDistanceBetween(curLatLng, new google.maps.LatLng(c.lat, c.lng));
+              const d = google.maps.geometry.spherical.computeDistanceBetween(
+                new google.maps.LatLng(currentCoords[0], currentCoords[1]),
+                new google.maps.LatLng(c.lat, c.lng)
+              );
               if (d < 50 && window.AppInventor) {
-                window.AppInventor.setWebViewString(JSON.stringify({ approachingBusy: true, lat: c.lat, lng: c.lng }));
+                window.AppInventor.setWebViewString(JSON.stringify({
+                  approachingBusy: true,
+                  lat: c.lat,
+                  lng: c.lng
+                }));
               }
             });
-
+          
+            // 4) check all redArea every tick
             redArea.forEach(c => {
-              if (!validateLatLng(c)) return;
-              const d = google.maps.geometry.spherical.computeDistanceBetween(curLatLng, new google.maps.LatLng(c.lat, c.lng));
+              const d = google.maps.geometry.spherical.computeDistanceBetween(
+                new google.maps.LatLng(currentCoords[0], currentCoords[1]),
+                new google.maps.LatLng(c.lat, c.lng)
+              );
               if (d < 50 && window.AppInventor) {
-                window.AppInventor.setWebViewString(JSON.stringify({ approachingRed: true, lat: c.lat, lng: c.lng }));
+                window.AppInventor.setWebViewString(JSON.stringify({
+                  approachingRed: true,
+                  lat: c.lat,
+                  lng: c.lng
+                }));
               }
             });
-
-            // arrival check — only if we had a destination and we started farther than 50m
-            if (updateCount > 3 && typeof eLat !== 'undefined' && typeof eLng !== 'undefined' && initialDestDistance !== null) {
-              const destPoint = new google.maps.LatLng(eLat, eLng);
-              const destDistance = google.maps.geometry.spherical.computeDistanceBetween(curLatLng, destPoint);
-              if (!notifiedDestination && initialDestDistance > 50 && destDistance < 30) {
+          
+            // 5) arrival check *only after* 3 ticks
+            if (updateCount > 3) {
+              const destDistance = google.maps.geometry.spherical.computeDistanceBetween(
+                new google.maps.LatLng(currentCoords[0], currentCoords[1]),
+                new google.maps.LatLng(destLat, destLng)
+              );
+              if (!notifiedDestination && destDistance < 30) {
                 notifiedDestination = true;
                 document.getElementById('destinationOverlay').style.display = 'flex';
-                if (window.AppInventor) window.AppInventor.setWebViewString(JSON.stringify({ reachedDestination: true }));
+                if (window.AppInventor) {
+                  window.AppInventor.setWebViewString(
+                    JSON.stringify({ reachedDestination: true })
+                  );
+                }
               }
             }
           }, 1000);
-
         } catch (e) {
-          if (window.AppInventor) window.AppInventor.setWebViewString(JSON.stringify({ mapInitError: e.message }));
+    // Handle any errors initializing the map
+          if (window.AppInventor) {
+            window.AppInventor.setWebViewString(
+              JSON.stringify({ mapInitError: e.message })
+            );
+          }
           console.error('initMap error:', e);
         }
       }
 
       function calculateAndDisplayRoute([sLat,sLng,eLat,eLng], mode) {
-        if (!directionsService) return;
-        if (!isFinite(sLat) || !isFinite(sLng) || !isFinite(eLat) || !isFinite(eLng)) return;
         directionsService.route({
           origin:{lat:sLat,lng:sLng},
           destination:{lat:eLat,lng:eLng},
@@ -434,13 +305,16 @@
               `<span class="distance">Distance: ${leg.distance.text}</span>`+
               ` &nbsp;•&nbsp; `+
               `<span class="duration">Duration: ${leg.duration.text}</span>`;
-            if(window.AppInventor) window.AppInventor.setWebViewString(JSON.stringify({ distance: leg.distance.text, duration: leg.duration.text }));
-          } else {
-            console.warn('Directions failed:', st);
+            if(window.AppInventor)
+              window.AppInventor.setWebViewString(
+                JSON.stringify({
+                  distance:leg.distance.text,
+                  duration:leg.duration.text
+                })
+              );
           }
         });
       }
-
       function hideDestinationOverlay() {
         document.getElementById('destinationOverlay').style.display = 'none';
       }

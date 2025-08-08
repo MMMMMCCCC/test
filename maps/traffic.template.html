@@ -78,6 +78,11 @@
       let distanceService;
       let currentMarker;
       let lastPanLocation = null;
+      // add these
+      let lastUserInteraction = 0;      // timestamp (ms) when user last touched/dragged/zoomed
+      const autoPanDelay = 7000;        // don't auto-pan until X ms after last user interaction
+      const panDistanceThreshold = 10;  // meters before we auto-pan (avoid jitter)
+
 
       function parseQueryParams() {
         const p = new URLSearchParams(window.location.search);
@@ -116,6 +121,15 @@
           map = new google.maps.Map(document.getElementById('map'), {
             center:{lat:currentCoords[0],lng:currentCoords[1]}, zoom:16
           });
+          // mark the time whenever user interacts with the map
+          function markUserInteraction() { lastUserInteraction = Date.now(); }
+          map.addListener('dragstart', markUserInteraction);
+          map.addListener('mousedown', markUserInteraction);
+          map.addListener('touchstart', markUserInteraction);
+          map.addListener('zoom_changed', markUserInteraction);
+          // 'idle' fires after move/zoom completes — record that too
+          map.addListener('idle', () => { lastUserInteraction = Date.now(); });
+
           // Traffic layer
           new google.maps.TrafficLayer().setMap(map);
           directionsService  = new google.maps.DirectionsService();
@@ -211,13 +225,20 @@
               if (updateCount > 7) {
                 const newLatLng = new google.maps.LatLng(currentCoords[0], currentCoords[1]);
               
-                // Only pan if moved more than ~10 meters
-                if (!lastPanLocation || 
-                    google.maps.geometry.spherical.computeDistanceBetween(newLatLng, lastPanLocation) > 10) {
+                // moved enough distance?
+                const movedFarEnough = !lastPanLocation ||
+                  google.maps.geometry.spherical.computeDistanceBetween(newLatLng, lastPanLocation) > panDistanceThreshold;
+              
+                // enough time since user's last interaction?
+                const timeSinceUser = Date.now() - lastUserInteraction;
+                const userIsIdle = timeSinceUser > autoPanDelay;
+              
+                if (movedFarEnough && userIsIdle) {
                   map.panTo(newLatLng);
                   lastPanLocation = newLatLng;
                 }
               }
+
               // 3) Distance & duration only
               distanceService.getDistanceMatrix({
                 origins:      [{ lat: currentCoords[0], lng: currentCoords[1] }],

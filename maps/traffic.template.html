@@ -118,7 +118,7 @@
           const circle = new google.maps.Circle({
             map: map,
             center: c,
-            radius: 600,
+            radius: 450,
             strokeColor: '#FF0000',
             strokeOpacity: 0.9,
             strokeWeight: 2,
@@ -179,6 +179,7 @@
         }
 
         // redArea handling (assume canonical [lat,lng])
+// Replace your redArea block with this (forces [lat,lng] — no swapping)
         let rawRed = [];
         const redParam = p.get('redArea');
         if (redParam) {
@@ -194,7 +195,23 @@
             });
           }
         }
-        redArea = (Array.isArray(rawRed) ? rawRed : []).map(toLatLngStrict).filter(Boolean);
+        redArea = (Array.isArray(rawRed) ? rawRed : []).map(item => {
+          const candidate = (typeof item === 'string') ? safeJSONParseMaybeEncoded(item) : item;
+          if (!candidate) return null;
+          // Expect canonical [lat, lng] or {lat:..., lng:...}
+          if (Array.isArray(candidate) && candidate.length >= 2) {
+            const lat = parseFloat(candidate[0]);
+            const lng = parseFloat(candidate[1]);
+            return (isFinite(lat) && isFinite(lng)) ? { lat, lng } : null;
+          }
+          if (candidate.lat !== undefined && candidate.lng !== undefined) {
+            const lat = parseFloat(candidate.lat);
+            const lng = parseFloat(candidate.lng);
+            return (isFinite(lat) && isFinite(lng)) ? { lat, lng } : null;
+          }
+          return null;
+        }).filter(Boolean);
+
 
         // busyAreas same
         let rawBusy = [];

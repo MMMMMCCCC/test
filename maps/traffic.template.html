@@ -146,7 +146,7 @@
             new google.maps.Circle({
               map: map,
               center: c,               // use the object directly
-              radius: 600,             // a bit larger for visibility
+              radius: 400,             // a bit larger for visibility
               strokeColor: '#FF0000',
               strokeOpacity: 0.9,
               strokeWeight: 2,
@@ -207,17 +207,9 @@
                 lng: currentCoords[1]
               });
           
-              // 2) Pan the map (after 7s)
-              if (updateCount > 7) {
-                const newLatLng = new google.maps.LatLng(currentCoords[0], currentCoords[1]);
+              // 2) Auto-pan removed — do not change map center automatically.
+              // (Previous panning logic intentionally removed to stop refreshes.)
               
-                // Only pan if moved more than ~10 meters
-                if (!lastPanLocation || 
-                    google.maps.geometry.spherical.computeDistanceBetween(newLatLng, lastPanLocation) > 10) {
-                  map.panTo(newLatLng);
-                  lastPanLocation = newLatLng;
-                }
-              }
               // 3) Distance & duration only
               distanceService.getDistanceMatrix({
                 origins:      [{ lat: currentCoords[0], lng: currentCoords[1] }],
@@ -346,6 +338,7 @@
     </script>
   </body>
 </html>
+
 
 
 

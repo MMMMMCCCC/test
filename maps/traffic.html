@@ -78,6 +78,7 @@
       let distanceService;
       let currentMarker;
       let lastPanLocation = null;
+      let lastDistanceUpdate = 0, distanceUpdateInterval = 5000; // ms (update every 5s)
 
       function parseQueryParams() {
         const p = new URLSearchParams(window.location.search);
@@ -210,21 +211,30 @@
               // 2) Auto-pan removed — do not change map center automatically.
               // (Previous panning logic intentionally removed to stop refreshes.)
               
-              // 3) Distance & duration only
-              distanceService.getDistanceMatrix({
-                origins:      [{ lat: currentCoords[0], lng: currentCoords[1] }],
-                destinations: [{ lat: destLat,        lng: destLng        }],
-                travelMode:   selectedMode,
-                unitSystem: google.maps.UnitSystem.IMPERIAL
-              }, (response, status) => {
-                if (status === 'OK') {
-                  const el = response.rows[0].elements[0];
-                  document.getElementById('infoBox').innerHTML =
-                    `<span class="distance">Distance: ${el.distance.text}</span>` +
-                    ` &nbsp;•&nbsp; ` +
-                    `<span class="duration">Duration: ${el.duration.text}</span>`;
+              // Throttled distance/duration update (won't change map viewport)
+              const now = Date.now();
+              if (now - lastDistanceUpdate > distanceUpdateInterval) {
+                lastDistanceUpdate = now;
+                if (typeof destLat !== 'undefined' && typeof destLng !== 'undefined') {
+                  distanceService.getDistanceMatrix({
+                    origins:      [{ lat: currentCoords[0], lng: currentCoords[1] }],
+                    destinations: [{ lat: destLat,        lng: destLng        }],
+                    travelMode:   selectedMode,
+                    unitSystem:   google.maps.UnitSystem.IMPERIAL
+                  }, (response, status) => {
+                    if (status === 'OK' &&
+                        response.rows && response.rows[0] &&
+                        response.rows[0].elements && response.rows[0].elements[0] &&
+                        response.rows[0].elements[0].status === 'OK') {
+                      const el = response.rows[0].elements[0];
+                      document.getElementById('infoBox').innerHTML =
+                        `<span class="distance">Distance: ${el.distance.text}</span>` +
+                        ` &nbsp;•&nbsp; ` +
+                        `<span class="duration">Duration: ${el.duration.text}</span>`;
+                    }
+                  });
                 }
-              });
+              }
             }
             // 3) check all busyAreas every tick
             busyAreas.forEach(c => {
@@ -293,6 +303,7 @@
           if(st==='OK'){
             directionsRenderer.setDirections(res);
             const leg=res.routes[0].legs[0];
+            // update infoBox (only when route is calculated)
             document.getElementById('infoBox').innerHTML=
               `<span class="distance">Distance: ${leg.distance.text}</span>`+
               ` &nbsp;•&nbsp; `+
@@ -338,6 +349,7 @@
     </script>
   </body>
 </html>
+
 
 
 

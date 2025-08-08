@@ -70,7 +70,11 @@
     </style>
     <script>
       let map, directionsService, directionsRenderer;
-      let currentCoords, startAndEndLocation, redArea, busyAreas;
+      // sensible defaults so we never pass undefined into Google calls
+      let currentCoords = [0, 0];
+      let startAndEndLocation = [];
+      let redArea = [];
+      let busyAreas = [];
 
       let notifiedDestination = false;
       let selectedMode = 'WALKING';
@@ -83,44 +87,81 @@
       const autoPanDelay = 7000;        // don't auto-pan until X ms after last user interaction
       const panDistanceThreshold = 10;  // meters before we auto-pan (avoid jitter)
 
-
       function parseQueryParams() {
         const p = new URLSearchParams(window.location.search);
-        const pj = s => JSON.parse(decodeURIComponent(s || '[]'));
-      
+        const pj = s => {
+          try {
+            if (!s) return [];
+            // some callers double-encode; try decode then JSON.parse
+            return JSON.parse(decodeURIComponent(s));
+          } catch (e) {
+            // last resort: try raw parse (maybe it's already an array/object)
+            try { return JSON.parse(s); } catch(e2) { return []; }
+          }
+        };
+
         // live location passed from App Inventor
-        currentCoords       = pj(p.get('currentCoords'));
+        const cc = pj(p.get('currentCoords'));
+        if (Array.isArray(cc) && cc.length >= 2) currentCoords = cc;
+
         // static start+end passed from App Inventor
-        startAndEndLocation = pj(p.get('startAndEndLocation'));
-        // circles
-        const rawRed  = pj(p.get('redArea'));
-        const rawBusy = pj(p.get('busyAreas'));
-      
-        redArea   = rawRed .map(s => { const a = JSON.parse(s); return {lat:a[1],lng:a[0]}; }).filter(x=>x);
-        busyAreas = rawBusy.map(a => ({lat:a[0],lng:a[1]}));
+        const sae = pj(p.get('startAndEndLocation'));
+        if (Array.isArray(sae)) startAndEndLocation = sae;
+
+        // circles: raw entries may be stringified arrays or arrays
+        const rawRed  = pj(p.get('redArea')) || [];
+        const rawBusy = pj(p.get('busyAreas')) || [];
+
+        redArea = (Array.isArray(rawRed) ? rawRed : []).map(item => {
+          try {
+            const a = (typeof item === 'string') ? JSON.parse(item) : item;
+            if (!Array.isArray(a)) return null;
+            // decide which index is latitude (latitude is in -90..90)
+            return (Math.abs(a[0]) <= 90) ? { lat: a[0], lng: a[1] } : { lat: a[1], lng: a[0] };
+          } catch (e) { return null; }
+        }).filter(Boolean);
+
+        busyAreas = (Array.isArray(rawBusy) ? rawBusy : []).map(item => {
+          try {
+            const a = (typeof item === 'string') ? JSON.parse(item) : item;
+            if (Array.isArray(a) && a.length >= 2) {
+              return (Math.abs(a[0]) <= 90) ? { lat: a[0], lng: a[1] } : { lat: a[1], lng: a[0] };
+            }
+            if (a && a.lat !== undefined && a.lng !== undefined) return { lat: a.lat, lng: a.lng };
+            return null;
+          } catch (e) { return null; }
+        }).filter(Boolean);
       }
 
       function initMap() {
         try {
           parseQueryParams();
-          // If your URL‐encoded list is [ destLat, destLng, startLat, startLng ]:
-          const [ destLat, destLng, startLat, startLng ] = startAndEndLocation;
-          // inside initMap(), right after parseQueryParams() and destLat/destLng
-          // DEBUG: send your parsed route endpoints back to App Inventor
-          if (navigator.geolocation) {
-            navigator.geolocation.watchPosition(pos => {
-              currentCoords = [ pos.coords.latitude, pos.coords.longitude ];
-            }, err => {
-              console.warn("Geolocation error:", err);
-            }, {
-              enableHighAccuracy: true,
-              maximumAge: 0,
-              timeout: 5000
-            });
+
+          // Normalize start/end coords - accept either [sLat,sLng,eLat,eLng] OR [destLat,destLng,startLat,startLng]
+          let sLat, sLng, eLat, eLng;
+          if (startAndEndLocation && startAndEndLocation.length === 4) {
+            // If first element looks like a latitude (-90..90), assume [sLat,sLng,eLat,eLng]
+            if (Math.abs(startAndEndLocation[0]) <= 90) {
+              [sLat, sLng, eLat, eLng] = startAndEndLocation;
+            } else {
+              // otherwise fallback to previous ordering used elsewhere
+              [eLat, eLng, sLat, sLng] = startAndEndLocation;
+            }
+          } else {
+            // leave as undefined if not present
           }
+
+          // Determine initial center: prefer currentCoords, then start, then end, else 0,0
+          const center = {
+            lat: (currentCoords && currentCoords[0]) ? currentCoords[0] : (sLat || eLat || 0),
+            lng: (currentCoords && currentCoords[1]) ? currentCoords[1] : (sLng || eLng || 0)
+          };
+
           map = new google.maps.Map(document.getElementById('map'), {
-            center:{lat:currentCoords[0],lng:currentCoords[1]}, zoom:16
+            center,
+            zoom: 16
           });
+
           // mark the time whenever user interacts with the map
           function markUserInteraction() { lastUserInteraction = Date.now(); }
           map.addListener('dragstart', markUserInteraction);
@@ -137,7 +178,7 @@
             map: map,
             preserveViewport: true
           });
-  
+
           // Blue marker = current location
           currentMarker = new google.maps.Marker({
             position: { lat: currentCoords[0], lng: currentCoords[1] },
@@ -151,50 +192,56 @@
               strokeColor: 'white'
             }
           });
-          
+
           // Set up DistanceMatrixService
           distanceService = new google.maps.DistanceMatrixService();
-  
+
           // Danger circles
           redArea.forEach(c => {
             new google.maps.Circle({
               map: map,
-              center: c,               // use the object directly
-              radius: 600,             // a bit larger for visibility
+              center: c,
+              radius: 600,
               strokeColor: '#FF0000',
               strokeOpacity: 0.9,
               strokeWeight: 2,
               fillColor: '#FF6666',
               fillOpacity: 0.4,
-              zIndex: 1000             // draw above roads
+              zIndex: 1000
             });
           });
-  
+
           // Busy-area circles (yellow)
           if (busyAreas.length) busyAreas.forEach(c =>
             new google.maps.Circle({
               map: map,
               center: c,
-              radius: 100,               // bigger radius
-              strokeColor: '#FFD700',    // bright gold border
-              strokeOpacity: 1,          // fully opaque border
-              strokeWeight: 2,           // thicker border
-              fillColor: '#FFFF00',      // pure yellow fill
-              fillOpacity: 0.4,          // more visible
-              zIndex: 1002               // above everything else
+              radius: 100,
+              strokeColor: '#FFD700',
+              strokeOpacity: 1,
+              strokeWeight: 2,
+              fillColor: '#FFFF00',
+              fillOpacity: 0.4,
+              zIndex: 1002
             })
           );
-  
-          // Draw walking route
-          calculateAndDisplayRoute(startAndEndLocation, selectedMode);
-  
+
+          // Draw walking route only if we have full start & end
+          if (typeof sLat !== 'undefined' && typeof sLng !== 'undefined' &&
+              typeof eLat !== 'undefined' && typeof eLng !== 'undefined') {
+            calculateAndDisplayRoute([sLat, sLng, eLat, eLng], selectedMode);
+          }
+
           // Travel-mode toggle
           document.getElementById('travelMode')
             .addEventListener('change', e => {
               selectedMode = e.target.value;
-              calculateAndDisplayRoute(startAndEndLocation, selectedMode);
+              if (typeof sLat !== 'undefined' && typeof sLng !== 'undefined' &&
+                  typeof eLat !== 'undefined' && typeof eLng !== 'undefined') {
+                calculateAndDisplayRoute([sLat, sLng, eLat, eLng], selectedMode);
+              }
             });
-  
+
           // Report Busy button
           document.getElementById('reportBusy')
             .addEventListener('click', () => {
@@ -205,62 +252,80 @@
                   lng: currentCoords[1]
                 }));
               }
-            });  // ← close the click-function and addEventListener
-          
-          // Check proximity every 5s
-          // Inside your initMap(), replace or add the following setInterval section:
+            });
 
+          // Watch device geolocation if available (updates currentCoords)
+          if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(pos => {
+              currentCoords = [ pos.coords.latitude, pos.coords.longitude ];
+            }, err => {
+              console.warn("Geolocation error:", err);
+            }, {
+              enableHighAccuracy: true,
+              maximumAge: 0,
+              timeout: 5000
+            });
+          }
+
+          // main tick: update marker, check proximity, distance matrix etc.
           setInterval(() => {
-            // 1) bump the tick counter
             updateCount++;
-          
+
             if (updateCount > 1) {
-              // 1) Move the blue marker
-              currentMarker.setPosition({
-                lat: currentCoords[0],
-                lng: currentCoords[1]
-              });
-          
-              // 2) Pan the map (after 7s)
+              // move marker (safe positions)
+              const newLat = currentCoords[0] || center.lat;
+              const newLng = currentCoords[1] || center.lng;
+              const newPos = { lat: newLat, lng: newLng };
+              currentMarker.setPosition(newPos);
+
+              // PAN: only if enough time has passed since user last interacted AND moved > threshold
               if (updateCount > 7) {
-                const newLatLng = new google.maps.LatLng(currentCoords[0], currentCoords[1]);
-              
-                // moved enough distance?
+                const newLatLng = new google.maps.LatLng(newPos.lat, newPos.lng);
+
                 const movedFarEnough = !lastPanLocation ||
                   google.maps.geometry.spherical.computeDistanceBetween(newLatLng, lastPanLocation) > panDistanceThreshold;
-              
-                // enough time since user's last interaction?
+
                 const timeSinceUser = Date.now() - lastUserInteraction;
                 const userIsIdle = timeSinceUser > autoPanDelay;
-              
+
                 if (movedFarEnough && userIsIdle) {
                   map.panTo(newLatLng);
                   lastPanLocation = newLatLng;
                 }
               }
 
-              // 3) Distance & duration only
-              distanceService.getDistanceMatrix({
-                origins:      [{ lat: currentCoords[0], lng: currentCoords[1] }],
-                destinations: [{ lat: destLat,        lng: destLng        }],
-                travelMode:   selectedMode,
-                unitSystem: google.maps.UnitSystem.IMPERIAL
-              }, (response, status) => {
-                if (status === 'OK') {
-                  const el = response.rows[0].elements[0];
-                  document.getElementById('infoBox').innerHTML =
-                    `<span class="distance">Distance: ${el.distance.text}</span>` +
-                    ` &nbsp;•&nbsp; ` +
-                    `<span class="duration">Duration: ${el.duration.text}</span>`;
-                }
-              });
+              // Distance Matrix for display (IMPERIAL units)
+              // Only if we have a destination
+              if (typeof eLat !== 'undefined' && typeof eLng !== 'undefined') {
+                distanceService.getDistanceMatrix({
+                  origins:      [{ lat: newPos.lat, lng: newPos.lng }],
+                  destinations: [{ lat: eLat,        lng: eLng        }],
+                  travelMode:   selectedMode,
+                  unitSystem: google.maps.UnitSystem.IMPERIAL
+                }, (response, status) => {
+                  if (status === 'OK' &&
+                      response.rows && response.rows[0] &&
+                      response.rows[0].elements && response.rows[0].elements[0] &&
+                      response.rows[0].elements[0].status === 'OK') {
+                    const el = response.rows[0].elements[0];
+                    document.getElementById('infoBox').innerHTML =
+                      `<span class="distance">Distance: ${el.distance.text}</span>` +
+                      ` &nbsp;•&nbsp; ` +
+                      `<span class="duration">Duration: ${el.duration.text}</span>`;
+                    if (window.AppInventor) {
+                      window.AppInventor.setWebViewString(
+                        JSON.stringify({ distance: el.distance.text, duration: el.duration.text })
+                      );
+                    }
+                  }
+                });
+              }
             }
-            // 3) check all busyAreas every tick
+
+            // check busyAreas and redArea
+            const curLatLng = new google.maps.LatLng(currentCoords[0] || center.lat, currentCoords[1] || center.lng);
             busyAreas.forEach(c => {
-              const d = google.maps.geometry.spherical.computeDistanceBetween(
-                new google.maps.LatLng(currentCoords[0], currentCoords[1]),
-                new google.maps.LatLng(c.lat, c.lng)
-              );
+              const d = google.maps.geometry.spherical.computeDistanceBetween(curLatLng, new google.maps.LatLng(c.lat, c.lng));
               if (d < 50 && window.AppInventor) {
                 window.AppInventor.setWebViewString(JSON.stringify({
                   approachingBusy: true,
@@ -269,13 +334,8 @@
                 }));
               }
             });
-          
-            // 4) check all redArea every tick
             redArea.forEach(c => {
-              const d = google.maps.geometry.spherical.computeDistanceBetween(
-                new google.maps.LatLng(currentCoords[0], currentCoords[1]),
-                new google.maps.LatLng(c.lat, c.lng)
-              );
+              const d = google.maps.geometry.spherical.computeDistanceBetween(curLatLng, new google.maps.LatLng(c.lat, c.lng));
               if (d < 50 && window.AppInventor) {
                 window.AppInventor.setWebViewString(JSON.stringify({
                   approachingRed: true,
@@ -284,36 +344,37 @@
                 }));
               }
             });
-          
-            // 5) arrival check *only after* 3 ticks
-            if (updateCount > 3) {
+
+            // arrival check (after a few ticks)
+            if (updateCount > 3 && typeof eLat !== 'undefined' && typeof eLng !== 'undefined') {
               const destDistance = google.maps.geometry.spherical.computeDistanceBetween(
-                new google.maps.LatLng(currentCoords[0], currentCoords[1]),
-                new google.maps.LatLng(destLat, destLng)
+                curLatLng,
+                new google.maps.LatLng(eLat, eLng)
               );
               if (!notifiedDestination && destDistance < 30) {
                 notifiedDestination = true;
                 document.getElementById('destinationOverlay').style.display = 'flex';
                 if (window.AppInventor) {
-                  window.AppInventor.setWebViewString(
-                    JSON.stringify({ reachedDestination: true })
-                  );
+                  window.AppInventor.setWebViewString(JSON.stringify({ reachedDestination: true }));
                 }
               }
             }
-          }, 1000);
+          }, 1000); // 1s tick
+
         } catch (e) {
-    // Handle any errors initializing the map
           if (window.AppInventor) {
-            window.AppInventor.setWebViewString(
-              JSON.stringify({ mapInitError: e.message })
-            );
+            window.AppInventor.setWebViewString(JSON.stringify({ mapInitError: e.message }));
           }
           console.error('initMap error:', e);
         }
       }
 
       function calculateAndDisplayRoute([sLat,sLng,eLat,eLng], mode) {
+        if (!directionsService) return;
+        // guard: ensure numbers present
+        if (typeof sLat === 'undefined' || typeof sLng === 'undefined' ||
+            typeof eLat === 'undefined' || typeof eLng === 'undefined') return;
+
         directionsService.route({
           origin:{lat:sLat,lng:sLng},
           destination:{lat:eLat,lng:eLng},
@@ -333,6 +394,8 @@
                   duration:leg.duration.text
                 })
               );
+          } else {
+            console.warn('Directions failed:', st);
           }
         });
       }
@@ -367,4 +430,3 @@
     </script>
   </body>
 </html>
-
